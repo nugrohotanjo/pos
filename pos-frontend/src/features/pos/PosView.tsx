@@ -44,6 +44,7 @@ interface PosViewProps {
     cashReceived: number, 
     change: number
   ) => TransactionRecord;
+    appName?: string;
 }
 
 export const PosView: React.FC<PosViewProps> = ({ 
@@ -53,7 +54,8 @@ export const PosView: React.FC<PosViewProps> = ({
   pettyCashRecords,
   onAddPettyCash,
   onAddAuditLog,
-  onCompleteTransaction
+  onCompleteTransaction,
+  appName // <-- Tambahkan ini di sini
 }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -212,7 +214,7 @@ export const PosView: React.FC<PosViewProps> = ({
       amount: pettyAmount,
       reason: pettyReason,
       timestamp: new Date().toLocaleString('id-ID'),
-      cashierName: 'Budi Santoso',
+      cashierName: 'Kasir',
     };
 
     onAddPettyCash(newRecord);
@@ -306,7 +308,7 @@ export const PosView: React.FC<PosViewProps> = ({
       onAddAuditLog({
         id: `AUD-${Date.now().toString().slice(-4)}`,
         timestamp: new Date().toLocaleString('id-ID'),
-        actor: 'Budi Santoso (Kasir)',
+        actor: 'Kasir',
         module: 'POS_TERMINAL',
         action: 'EXCHANGE_REFUND',
         details: `Transaksi retur/tukar diproses. Net Bayar: Rp ${total.toLocaleString('id-ID')}`,
@@ -323,34 +325,36 @@ export const PosView: React.FC<PosViewProps> = ({
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 absolute inset-0 z-50 select-none">
+    <div className="flex flex-col lg:flex-row h-screen bg-slate-50 select-none overflow-y-auto lg:overflow-hidden">
       
-      {/* Kolom Kiri */}
-      <div className="w-[60%] flex flex-col border-r border-slate-200 bg-white">
+      {/* Kolom Kiri: Keranjang & Input Barcode */}
+      <div className="w-full lg:w-[60%] flex flex-col border-r border-slate-200 bg-white min-h-[500px] lg:h-screen">
         
         {/* Header POS */}
-        <div className="h-16 bg-slate-900 flex items-center px-6 justify-between">
-          <div className="flex items-center gap-3">
+        <div className="min-h-16 py-3 px-4 sm:px-6 bg-slate-900 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => setActiveMenu('dashboard')} 
-              className="p-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center gap-2 text-sm font-semibold transition-colors"
+              className="p-1.5 sm:p-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 flex items-center gap-1.5 text-xs sm:text-sm font-semibold transition-colors"
             >
-              <ArrowLeft className="w-5 h-5" /> Keluar
+              <ArrowLeft className="w-4 h-4" /> Keluar
             </button>
-            <h1 className="font-bold text-lg text-white tracking-wider">POS SERBA 35.000</h1>
+            <h1 className="font-bold text-sm sm:text-base text-white tracking-wider uppercase truncate max-w-[180px] sm:max-w-xs">
+              {appName || 'POS SERBA 35K'}
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {heldOrders.length > 0 && (
-              <div className="flex items-center gap-1.5 mr-2">
-                <span className="text-xs text-amber-400 font-medium">{heldOrders.length} Diparkir:</span>
+              <div className="flex items-center gap-1 mr-1">
+                <span className="text-[10px] sm:text-xs text-amber-400 font-medium">{heldOrders.length} Parkir:</span>
                 {heldOrders.map(h => (
                   <button
                     key={h.id}
                     onClick={() => handleResumeOrder(h)}
-                    className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold flex items-center gap-1 shadow-sm"
+                    className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] sm:text-xs font-bold flex items-center gap-1 shadow-sm"
                   >
-                    <PlayCircle className="w-3.5 h-3.5" />
+                    <PlayCircle className="w-3 h-3" />
                     {h.id}
                   </button>
                 ))}
@@ -362,55 +366,55 @@ export const PosView: React.FC<PosViewProps> = ({
                 setIsReturnMode(!isReturnMode);
                 refocusSearch();
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
+              className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold flex items-center gap-1 border transition-colors ${
                 isReturnMode 
                   ? 'bg-amber-500 text-white border-amber-600 animate-pulse' 
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
               }`}
             >
-              <Repeat className="w-4 h-4" /> [F7] {isReturnMode ? 'Mode Tukar Aktif!' : 'Tukar Barang'}
+              <Repeat className="w-3.5 h-3.5" /> [F7] {isReturnMode ? 'Mode Retur' : 'Tukar'}
             </button>
 
             <button
               onClick={() => setIsPettyCashOpen(true)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] sm:text-xs font-semibold flex items-center gap-1 border border-slate-700 transition-colors"
             >
-              <Coins className="w-4 h-4 text-amber-400" /> [F6] Kas Laci
+              <Coins className="w-3.5 h-3.5 text-amber-400" /> [F6] Kas
             </button>
 
             <button
               onClick={() => setIsShiftCloseOpen(true)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              className="px-2.5 py-1 bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-800 rounded-lg text-[10px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
             >
-              <DoorClosed className="w-4 h-4" /> [F9] Tutup Shift
+              <DoorClosed className="w-3.5 h-3.5" /> [F9] Shift
             </button>
           </div>
         </div>
 
         {/* Mode Retur Banner */}
         {isReturnMode && (
-          <div className="bg-amber-500 text-slate-900 px-6 py-2 text-xs font-bold flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Repeat className="w-4 h-4" /> MODE RETUR AKTIF: Scan barang yang dikembalikan pelanggan (minus Rp 35.000)
+          <div className="bg-amber-500 text-slate-900 px-4 sm:px-6 py-2 text-xs font-bold flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Repeat className="w-4 h-4" /> MODE RETUR: Scan barang yang dikembalikan (-Rp 35.000)
             </span>
             <button onClick={() => setIsReturnMode(false)} className="text-xs underline font-black">
-              Batalkan Mode Retur (Esc)
+              Batal (Esc)
             </button>
           </div>
         )}
 
         {/* Input Barcode */}
-        <div className="p-6 bg-slate-50 border-b border-slate-200">
+        <div className="p-4 sm:p-6 bg-slate-50 border-b border-slate-200 shrink-0">
           <div className="relative">
-            <ScanBarcode className={`absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 ${isReturnMode ? 'text-amber-500' : 'text-slate-400'}`} />
+            <ScanBarcode className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 sm:w-7 sm:h-7 ${isReturnMode ? 'text-amber-500' : 'text-slate-400'}`} />
             <input 
               ref={searchRef} 
               type="text" 
-              placeholder={isReturnMode ? "SCAN BARANG RETUR (DIKEMBALIKAN)..." : "Scan Barcode / Ketik Nama Barang + Enter..."}
+              placeholder={isReturnMode ? "SCAN BARANG RETUR..." : "Scan Barcode / Ketik Nama + Enter..."}
               value={barcodeInput} 
               onChange={e => setBarcodeInput(e.target.value)} 
               onKeyDown={handleBarcode}
-              className={`w-full pl-16 pr-4 py-4 text-xl border-2 rounded-xl focus:ring-4 shadow-sm font-mono transition-all ${
+              className={`w-full pl-12 sm:pl-14 pr-3 py-3 sm:py-3.5 text-base sm:text-lg border-2 rounded-xl focus:ring-4 shadow-sm font-mono transition-all ${
                 isReturnMode 
                   ? 'border-amber-400 bg-amber-50/40 focus:border-amber-500 focus:ring-amber-200' 
                   : 'border-indigo-200 bg-white focus:border-indigo-500 focus:ring-indigo-100'
@@ -420,38 +424,38 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
 
         {/* Tabel Keranjang Belanja */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-x-auto overflow-y-auto min-h-[220px]">
           <table className="w-full text-left">
-            <thead className="bg-slate-100 text-slate-500 border-b text-xs uppercase font-semibold">
+            <thead className="bg-slate-100 text-slate-500 border-b text-[10px] sm:text-xs uppercase font-semibold">
               <tr>
-                <th className="py-3 px-6">Barcode / Item</th>
-                <th className="py-3 px-6 text-center">Status</th>
-                <th className="py-3 px-6 text-center">Qty</th>
-                <th className="py-3 px-6 text-right">Subtotal</th>
+                <th className="py-2.5 px-4 sm:px-6">Barcode / Item</th>
+                <th className="py-2.5 px-2 sm:px-4 text-center">Status</th>
+                <th className="py-2.5 px-2 sm:px-4 text-center">Qty</th>
+                <th className="py-2.5 px-4 sm:px-6 text-right">Subtotal</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
               {cart.map((item, index) => (
                 <tr key={`${item.barcode}-${index}`} className={item.isReturn ? 'bg-amber-50/40' : ''}>
-                  <td className="py-4 px-6">
-                    <div className="font-bold text-base text-slate-800">{item.name}</div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5">{item.barcode} • {item.category}</div>
+                  <td className="py-3 px-4 sm:px-6">
+                    <div className="font-bold text-slate-800 leading-tight">{item.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{item.barcode}</div>
                   </td>
-                  <td className="py-4 px-6 text-center">
+                  <td className="py-3 px-2 sm:px-4 text-center">
                     {item.isReturn ? (
-                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                        RETUR / TUKAR
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        RETUR
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600">
-                        BELI BARU
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                        BELI
                       </span>
                     )}
                   </td>
-                  <td className="py-4 px-6 text-center text-xl font-bold text-slate-700">
+                  <td className="py-3 px-2 sm:px-4 text-center font-bold text-base sm:text-lg text-slate-700">
                     <span className={item.qty < 0 ? 'text-amber-600' : 'text-slate-800'}>{item.qty}</span>
                   </td>
-                  <td className="py-4 px-6 text-right font-bold text-base">
+                  <td className="py-3 px-4 sm:px-6 text-right font-bold">
                     <span className={item.qty < 0 ? 'text-amber-600' : 'text-slate-800'}>
                       {item.qty < 0 ? '-' : ''}Rp {Math.abs(item.qty * FIXED_PRICE).toLocaleString('id-ID')}
                     </span>
@@ -460,8 +464,8 @@ export const PosView: React.FC<PosViewProps> = ({
               ))}
               {cart.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-20 text-center text-slate-400">
-                    Belum ada barang di keranjang. Silakan scan barcode barang.
+                  <td colSpan={4} className="py-16 text-center text-slate-400 text-xs sm:text-sm">
+                    Keranjang kosong. Scan barcode barang untuk memulai.
                   </td>
                 </tr>
               )}
@@ -470,56 +474,50 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
 
         {/* Bar Shortcut */}
-        <div className="p-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-          <div className="flex items-center gap-3">
-            <span className={`flex items-center gap-1 font-mono ${!paymentConfig.cashEnabled ? 'line-through text-slate-400' : ''}`}>
-              <Keyboard className="w-4 h-4 text-slate-400" /> <b>F1</b> Tunai
-            </span>
-            <span className={`font-mono ${!paymentConfig.qrisEnabled && !paymentConfig.edcEnabled ? 'line-through text-slate-400' : ''}`}>
-              <b>F2</b> Digital
-            </span>
-            <span className="font-mono"><b>F4</b> Hold</span>
-            <span className="font-mono"><b>F6</b> Kas</span>
-            <span className="font-mono text-amber-700 font-bold"><b>F7</b> Tukar</span>
-            <span className="font-mono"><b>F8</b> Void</span>
-            <span className="font-mono"><b>Esc</b> Batal</span>
+        <div className="p-3 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 font-mono">
+            <span><b>F1</b> Tunai</span>
+            <span><b>F2</b> Digital</span>
+            <span><b>F4</b> Hold</span>
+            <span><b>F7</b> Tukar</span>
+            <span><b>F8</b> Void</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsVoidModalOpen(true)}
               disabled={cart.length === 0}
-              className="flex items-center gap-1 px-3 py-1.5 font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg disabled:opacity-40 transition-colors"
             >
-              <Trash2 className="w-3.5 h-3.5" /> [F8] Void
+              <Trash2 className="w-3.5 h-3.5" /> Void
             </button>
 
             <button
               onClick={handleHoldOrder}
               disabled={cart.length === 0}
-              className="flex items-center gap-1 px-3 py-1.5 font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg disabled:opacity-40 transition-colors"
             >
-              <PauseCircle className="w-3.5 h-3.5" /> [F4] Parkir
+              <PauseCircle className="w-3.5 h-3.5" /> Parkir
             </button>
           </div>
         </div>
       </div>
 
-      {/* Kolom Kanan */}
-      <div className="w-[40%] bg-slate-50 flex flex-col shadow-2xl z-10">
-        <div className="h-64 bg-indigo-600 flex flex-col items-center justify-center text-white p-6 text-center">
-          <p className="text-indigo-200 font-medium text-lg uppercase tracking-wider mb-2">
+      {/* Kolom Kanan: Panel Total Tagihan & Tender Checkout */}
+      <div className="w-full lg:w-[40%] bg-slate-50 flex flex-col justify-between shadow-lg lg:h-screen shrink-0">
+        <div className="py-8 sm:py-12 lg:py-16 bg-indigo-600 flex flex-col items-center justify-center text-white px-4 text-center">
+          <p className="text-indigo-200 font-medium text-sm sm:text-base uppercase tracking-wider mb-1">
             {total < 0 ? 'Kembalikan Uang ke Pelanggan' : 'Total Tagihan (Termasuk PPN)'}
           </p>
-          <h2 className="text-6xl font-bold tracking-tight">
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight">
             {total < 0 ? `-Rp ${Math.abs(total).toLocaleString('id-ID')}` : `Rp ${total.toLocaleString('id-ID')}`}
           </h2>
-          <p className="mt-3 text-indigo-200 font-semibold">
+          <p className="mt-2 text-indigo-200 font-semibold text-xs sm:text-sm">
             {totalQty >= 0 ? `${totalQty} Net Barang` : `${Math.abs(totalQty)} Barang Diretur`}
           </p>
         </div>
 
-        <div className="flex-1 p-8 flex flex-col justify-end gap-3">
+        <div className="p-4 sm:p-6 lg:p-8 flex flex-col gap-3">
           <button 
             disabled={cart.length === 0 || !paymentConfig.cashEnabled}
             onClick={() => {
@@ -527,10 +525,9 @@ export const PosView: React.FC<PosViewProps> = ({
               setCashReceived(Math.max(0, total));
               setIsPaymentOpen(true);
             }}
-            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-lg rounded-xl shadow flex items-center justify-center gap-3 transition-transform active:scale-[0.99]"
+            className="w-full py-3.5 sm:py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-base sm:text-lg rounded-xl shadow flex items-center justify-center gap-2.5 transition-transform active:scale-[0.99]"
           >
-            <Banknote className="w-6 h-6" /> [F1] SELESAIKAN TUNAI
-            {!paymentConfig.cashEnabled && <span className="text-xs bg-slate-500 px-2 py-0.5 rounded font-normal">OFF</span>}
+            <Banknote className="w-5 h-5 sm:w-6 sm:h-6" /> [F1] SELESAIKAN TUNAI
           </button>
 
           <button 
@@ -540,10 +537,9 @@ export const PosView: React.FC<PosViewProps> = ({
               setCashReceived(Math.max(0, total));
               setIsPaymentOpen(true);
             }}
-            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-lg rounded-xl shadow flex items-center justify-center gap-3 transition-transform active:scale-[0.99]"
+            className="w-full py-3 sm:py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-sm sm:text-base rounded-xl shadow flex items-center justify-center gap-2.5 transition-transform active:scale-[0.99]"
           >
-            <CreditCard className="w-6 h-6" /> BAYAR QRIS (0.7%)
-            {!paymentConfig.qrisEnabled && <span className="text-xs bg-slate-500 px-2 py-0.5 rounded font-normal">GANGGUAN</span>}
+            <CreditCard className="w-5 h-5" /> BAYAR QRIS (0.7%)
           </button>
 
           <button 
@@ -553,10 +549,9 @@ export const PosView: React.FC<PosViewProps> = ({
               setCashReceived(Math.max(0, total));
               setIsPaymentOpen(true);
             }}
-            className="w-full py-3.5 bg-slate-900 hover:bg-black disabled:bg-slate-300 text-white font-bold text-lg rounded-xl shadow flex items-center justify-center gap-3 transition-transform active:scale-[0.99]"
+            className="w-full py-3 sm:py-3.5 bg-slate-900 hover:bg-black disabled:bg-slate-300 text-white font-bold text-sm sm:text-base rounded-xl shadow flex items-center justify-center gap-2.5 transition-transform active:scale-[0.99]"
           >
-            <CreditCard className="w-6 h-6" /> MESIN EDC DEBIT
-            {!paymentConfig.edcEnabled && <span className="text-xs bg-slate-500 px-2 py-0.5 rounded font-normal">OFF</span>}
+            <CreditCard className="w-5 h-5" /> MESIN EDC DEBIT
           </button>
         </div>
       </div>
@@ -567,19 +562,15 @@ export const PosView: React.FC<PosViewProps> = ({
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b pb-4">
               <h3 className="text-xl font-bold text-slate-800">
-                {total < 0 
-                  ? 'Pengembalian Refund Uang' 
-                  : paymentType === 'CASH' 
-                  ? 'Pembayaran Tunai' 
-                  : `Pembayaran ${paymentType}`}
+                {total < 0 ? 'Pengembalian Refund Uang' : `Pembayaran ${paymentType}`}
               </h3>
               <button onClick={() => { setIsPaymentOpen(false); refocusSearch(); }} className="p-1 hover:bg-slate-100 rounded-lg">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-100">
-              <div className="flex justify-between text-sm text-slate-500">
+            <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-100 text-sm">
+              <div className="flex justify-between text-slate-500">
                 <span>{total < 0 ? 'Total Refund ke Pelanggan:' : 'Total Tagihan:'}</span>
                 <span className="font-bold text-slate-800">
                   {total < 0 ? `-Rp ${Math.abs(total).toLocaleString('id-ID')}` : `Rp ${total.toLocaleString('id-ID')}`}
@@ -587,7 +578,7 @@ export const PosView: React.FC<PosViewProps> = ({
               </div>
               {total > 0 && paymentType === 'CASH' && (
                 <>
-                  <div className="flex justify-between text-sm text-slate-500">
+                  <div className="flex justify-between text-slate-500">
                     <span>Uang Diterima:</span>
                     <span className="font-bold text-indigo-600">Rp {cashReceived.toLocaleString('id-ID')}</span>
                   </div>
@@ -604,7 +595,7 @@ export const PosView: React.FC<PosViewProps> = ({
             <button
               onClick={handleFinishPayment}
               disabled={total > 0 && paymentType === 'CASH' && cashReceived < total}
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-lg shadow-md transition-all"
+              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-base sm:text-lg shadow-md transition-all"
             >
               KONFIRMASI & SELESAIKAN STRUK
             </button>
@@ -612,12 +603,12 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       )}
 
-      {/* MODAL DIALOG STRUK THERMAL BELANJA LENGKAP PPN ITEM-LEVEL */}
+      {/* MODAL STRUK THERMAL */}
       {completedReceipt && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-3 font-mono text-slate-800">
             <div className="text-center border-b pb-3 space-y-1">
-              <h3 className="font-black text-lg tracking-wider">TOKO SERBA 35.000</h3>
+              <h3 className="font-black text-lg tracking-wider uppercase">{appName || 'TOKO SERBA 35.000'}</h3>
               <p className="text-[11px] text-slate-500">NPWP: 01.234.567.8-012.000</p>
               <p className="text-[10px] text-slate-400">{completedReceipt.timestamp}</p>
             </div>
@@ -637,7 +628,6 @@ export const PosView: React.FC<PosViewProps> = ({
               </div>
             </div>
 
-            {/* List Barang Snapshot */}
             <div className="max-h-44 overflow-y-auto space-y-2 text-xs py-1 border-b">
               {completedReceipt.items.map((item, idx) => (
                 <div key={idx} className="space-y-0.5">
@@ -655,14 +645,13 @@ export const PosView: React.FC<PosViewProps> = ({
               ))}
             </div>
 
-            {/* Rekap Pajak PPN & Kembalian */}
             <div className="space-y-1 text-xs border-b pb-2">
               <div className="flex justify-between text-slate-500">
-                <span>Dasar Pengenaan Pajak (DPP):</span>
+                <span>DPP:</span>
                 <span>Rp {completedReceipt.totalDpp.toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between text-slate-500">
-                <span>PPN 11% (Item Rounding):</span>
+                <span>PPN 11%:</span>
                 <span>Rp {completedReceipt.totalTax.toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between font-bold text-sm border-t pt-1 text-slate-900">
@@ -683,16 +672,12 @@ export const PosView: React.FC<PosViewProps> = ({
               )}
             </div>
 
-            <p className="text-center text-[10px] text-slate-400 leading-tight">
-              Harga sudah termasuk PPN 11%.<br />Barang yang telah dibeli dapat ditukar 1x24 jam membawa struk ini.
-            </p>
-
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button
                 onClick={() => window.print()}
                 className="py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow"
               >
-                <Printer className="w-3.5 h-3.5" /> Cetak Struk
+                <Printer className="w-3.5 h-3.5" /> Cetak
               </button>
               <button
                 onClick={() => {
@@ -716,15 +701,15 @@ export const PosView: React.FC<PosViewProps> = ({
               <KeyRound className="w-6 h-6" />
               <h3 className="text-lg font-bold">Otorisasi Supervisor</h3>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Membatalkan seluruh transaksi keranjang. Masukkan PIN Supervisor (Demo: 1234):
+            <p className="text-xs text-slate-500">
+              Membatalkan seluruh pesanan keranjang. Masukkan PIN Supervisor (Demo: 1234):
             </p>
 
             <input
               type="password"
               maxLength={6}
               autoFocus
-              placeholder="PIN Supervisor..."
+              placeholder="PIN..."
               value={supervisorPin}
               onChange={e => setSupervisorPin(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleVerifyVoid()}
@@ -743,7 +728,7 @@ export const PosView: React.FC<PosViewProps> = ({
                 }}
                 className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-semibold"
               >
-                Batal (Esc)
+                Batal
               </button>
               <button
                 onClick={handleVerifyVoid}
@@ -775,24 +760,24 @@ export const PosView: React.FC<PosViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setPettyCashType('OUT')}
-                  className={`py-2.5 text-xs font-bold rounded-lg border flex items-center justify-center gap-1.5 transition-colors ${
+                  className={`py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1.5 transition-colors ${
                     pettyCashType === 'OUT' 
                       ? 'bg-rose-600 text-white border-rose-600' 
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <ArrowUpCircle className="w-4 h-4" /> Uang Keluar (Cash Out)
+                  <ArrowUpCircle className="w-4 h-4" /> Kas Keluar (Out)
                 </button>
                 <button
                   type="button"
                   onClick={() => setPettyCashType('IN')}
-                  className={`py-2.5 text-xs font-bold rounded-lg border flex items-center justify-center gap-1.5 transition-colors ${
+                  className={`py-2 text-xs font-bold rounded-lg border flex items-center justify-center gap-1.5 transition-colors ${
                     pettyCashType === 'IN' 
                       ? 'bg-emerald-600 text-white border-emerald-600' 
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <ArrowDownCircle className="w-4 h-4" /> Uang Masuk (Cash In)
+                  <ArrowDownCircle className="w-4 h-4" /> Kas Masuk (In)
                 </button>
               </div>
 
@@ -803,7 +788,7 @@ export const PosView: React.FC<PosViewProps> = ({
                   min={1000}
                   step={1000}
                   required
-                  placeholder="Contoh: 25000"
+                  placeholder="25000"
                   value={pettyAmount || ''}
                   onChange={(e) => setPettyAmount(Number(e.target.value))}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-base font-bold font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -811,11 +796,11 @@ export const PosView: React.FC<PosViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Keperluan / Keterangan</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Keperluan</label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Beli lakban & kantong plastik"
+                  placeholder="Beli kantong plastik kresek"
                   value={pettyReason}
                   onChange={(e) => setPettyReason(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -840,7 +825,7 @@ export const PosView: React.FC<PosViewProps> = ({
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Tutup Shift Kasir (Blind Count)</h3>
-                <p className="text-xs text-slate-400">Hitung fisik seluruh lembar uang yang ada di dalam laci kasir</p>
+                <p className="text-xs text-slate-400">Hitung fisik seluruh lembar uang di dalam laci kasir</p>
               </div>
               <button onClick={() => { setIsShiftCloseOpen(false); setShowShiftResult(false); refocusSearch(); }} className="p-1 hover:bg-slate-100 rounded-lg">
                 <X className="w-5 h-5 text-slate-500" />
@@ -849,7 +834,7 @@ export const PosView: React.FC<PosViewProps> = ({
 
             {!showShiftResult ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1">
+                <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
                   {[100000, 50000, 20000, 10000, 5000, 2000, 1000].map((nominal) => (
                     <div key={nominal} className="flex items-center justify-between p-2 bg-slate-50 border rounded-lg">
                       <span className="text-xs font-bold text-slate-700">Rp {nominal.toLocaleString('id-ID')}</span>
@@ -875,18 +860,18 @@ export const PosView: React.FC<PosViewProps> = ({
                   onClick={() => setShowShiftResult(true)}
                   className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-sm font-bold shadow-md transition-colors"
                 >
-                  Verifikasi & Finalkan Shift
+                  Verifikasi Fisik Laci
                 </button>
               </div>
             ) : (
               <div className="space-y-4 py-2">
                 <div className="p-4 rounded-xl border space-y-2 bg-slate-50">
                   <div className="flex justify-between text-xs text-slate-500">
-                    <span>Target Fisik Seharusnya:</span>
+                    <span>Target Seharusnya:</span>
                     <span className="font-mono">Rp {expectedCashTotal.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between text-sm font-bold text-slate-800">
-                    <span>Fisik Dihitung Kasir:</span>
+                    <span>Fisik Kasir:</span>
                     <span className="font-mono text-indigo-600">Rp {physicalCashTotal.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between text-base font-bold border-t pt-2">

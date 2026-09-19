@@ -130,7 +130,8 @@ export type AuditActionType =
   | 'TOGGLE_EMPLOYEE'
   | 'CREATE_ROLE'
   | 'UPDATE_PERMISSIONS'
-  | 'UPDATE_PAYMENT_CONFIG';
+  | 'UPDATE_PAYMENT_CONFIG'
+  | 'UPDATE_STORE_SETTINGS';
 
 export type AuditLog = {
   id: string;

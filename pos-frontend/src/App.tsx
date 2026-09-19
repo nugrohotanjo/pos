@@ -29,7 +29,7 @@ import { SettingsView } from './features/settings/SettingsView';
 import { AuditTrailView } from './features/audit/AuditTrailView';
 import { LoginView } from './features/auth/LoginView';
 import type { Language } from './data/translations';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, MonitorPlay } from 'lucide-react';
 
 const INITIAL_ROLES: CustomRole[] = [
   {
@@ -123,7 +123,9 @@ const INITIAL_PETTY_CASH: PettyCashEntry[] = [
 ];
 
 export default function App() {
+  const [appName, setAppName] = useState('TOKO SERBA 35K');
   // Sesi Login (null = Belum Login / Tampilkan Layar Login)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<Employee | null>(INITIAL_EMPLOYEES[0]);
 
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('dashboard');
@@ -149,6 +151,16 @@ export default function App() {
     if (!currentUserRole) return false;
     if (currentUserRole.id === 'role-owner') return true;
     return currentUserRole.permissions.includes(perm);
+  };
+
+  const handleUpdateAppName = (newName: string) => {
+    const old = appName;
+    setAppName(newName);
+    pushAudit(
+      'SETTINGS', 
+      'UPDATE_STORE_SETTINGS', 
+      `Mengubah nama aplikasi/toko dari "${old}" menjadi "${newName}"`
+    );
   };
 
   const pushAudit = (
@@ -474,6 +486,17 @@ export default function App() {
   // 2. JIKA SEDANG DI TERMINAL KASIR (POS)
   const activeProductsForPos = products.filter(p => p.isActive !== false);
 
+  if (!currentUser) {
+    return (
+      <LoginView
+        employees={employees}
+        roles={roles}
+        onLoginSuccess={handleLoginSuccess}
+        appName={appName}
+      />
+    );
+  }
+
   if (activeMenu === 'pos') {
     return (
       <PosView 
@@ -484,50 +507,78 @@ export default function App() {
         onAddPettyCash={handleAddPettyCash}
         onAddAuditLog={handleAddAuditLog}
         onCompleteTransaction={handleCompleteTransaction}
+        appName={appName}
       />
     );
   }
 
-  const renderAccessDenied = () => (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-      <div className="p-4 bg-rose-100 rounded-full text-rose-600 mb-4">
-        <ShieldAlert className="w-12 h-12" />
+  // Tampilan Selamat Datang Khusus Kasir / Non-Admin
+  const renderCashierWelcome = () => (
+    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 select-none">
+      <div className="max-w-xl w-full bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-6">
+        
+        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+          <MonitorPlay className="w-8 h-8" />
+        </div>
+
+        <div className="space-y-1.5">
+          <h2 className="text-2xl font-black text-slate-800">
+            Selamat Bertugas, {currentUser?.name}!
+          </h2>
+          <p className="text-xs text-slate-500">
+            Shift kasir aktif. Siap melayani transaksi pelanggan di Toko Serba 35.000.
+          </p>
+        </div>
+
+        {/* Tombol Utama Langsung Mulai Kasir */}
+        <div>
+          <button
+            onClick={() => setActiveMenu('pos')}
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 active:scale-[0.99]"
+          >
+            <MonitorPlay className="w-5 h-5" />
+            <span>MULAI TRANSAKSI KASIR</span>
+          </button>
+        </div>
+
+        {/* Panduan Pintas Keyboard */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left space-y-2.5">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            Pengingat Shortcut Kasir Cepat:
+          </span>
+          <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 font-mono">
+            <div><b>[F1]</b> Bayar Tunai</div>
+            <div><b>[F2]</b> Bayar Non-Tunai</div>
+            <div><b>[F4]</b> Parkir Pesanan</div>
+            <div><b>[F6]</b> Input Kas Laci</div>
+            <div><b>[F7]</b> Mode Retur / Tukar</div>
+            <div><b>[F8]</b> Void (PIN Supervisor)</div>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-slate-400">
+          Jika shift Anda telah selesai, gunakan tombol <b>[F9] Tutup Shift</b> di layar kasir untuk hitung fisik laci.
+        </p>
+
       </div>
-      <h3 className="text-xl font-bold text-slate-800">Akses Terbatas (Akses Ditolak)</h3>
-      <p className="text-xs text-slate-500 max-w-sm mt-1.5 leading-relaxed">
-        Akun <b>{currentUser.name}</b> dengan peran <b>{currentUserRole?.name}</b> tidak memiliki izin untuk melihat modul ini.
-      </p>
-      <button
-        onClick={() => setActiveMenu('pos')}
-        className="mt-5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors"
-      >
-        Buka Terminal Kasir
-      </button>
     </div>
   );
 
   // 3. LAYOUT UTAMA ADMIN SISTEM
   return (
-    <div className="flex h-screen bg-slate-50 font-sans">
+    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       <Sidebar 
         activeMenu={activeMenu} 
         setActiveMenu={setActiveMenu} 
         currentUser={currentUser}
         userRole={currentUserRole}
-        allEmployees={employees}
-        onChangeUser={(emp) => {
-          setCurrentUser(emp);
-          const role = roles.find(r => r.id === emp.roleId);
-          if (role && role.id !== 'role-owner') {
-            if (!role.permissions.includes(`manage_${activeMenu}` as any) && !role.permissions.includes(`view_${activeMenu}` as any)) {
-              setActiveMenu('pos');
-            }
-          }
-        }}
         onLogout={handleLogout}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        appName={appName}
       />
       
-      <main className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header 
           activeMenu={activeMenu} 
           lang={lang} 
@@ -535,80 +586,85 @@ export default function App() {
           currentUser={currentUser}
           userRole={currentUserRole}
           onLogout={handleLogout}
+          onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
         />
         
-        {activeMenu === 'dashboard' && (
-          hasPermission('access_dashboard') ? (
-            <DashboardView 
-              transactions={transactions}
-              products={products}
-              pettyCashRecords={pettyCashRecords}
-              stockMovements={stockMovements}
-              setActiveMenu={setActiveMenu}
-            />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'products' && (
-          hasPermission('manage_products') ? (
-            <ProductsView 
-              products={products} 
-              onAddProduct={handleAddProduct} 
-              onToggleArchiveProduct={handleToggleArchiveProduct}
-              onUpdateProduct={handleUpdateProduct}
-              canEdit={hasPermission('edit_products')}
-            />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'stock-ledger' && (
-          hasPermission('manage_stock') ? (
-            <StockLedgerView 
-              products={products} 
-              movements={stockMovements} 
-              onAdjustStock={handleAdjustStock} 
-            />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'reports' && (
-          hasPermission('view_reports') ? (
-            <ReportsView 
-              transactions={transactions} 
-              auditLogs={auditLogs}
-              pettyCashRecords={pettyCashRecords}
-            />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'audit-trail' && (
-          hasPermission('view_audit_trail') ? (
-            <AuditTrailView logs={auditLogs} />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'users' && (
-          hasPermission('manage_employees') ? (
-            <UsersView 
-              employees={employees} 
-              roles={roles}
-              onAddEmployee={handleAddEmployee} 
-              onToggleStatus={handleToggleEmployeeStatus} 
-              onAddRole={handleAddRole}
-              onUpdateRolePermissions={handleUpdateRolePermissions}
-            />
-          ) : renderAccessDenied()
-        )}
-        
-        {activeMenu === 'settings' && (
-          hasPermission('manage_settings') ? (
-            <SettingsView 
-              paymentConfig={paymentConfig} 
-              onUpdatePaymentConfig={handleUpdatePaymentConfig} 
-            />
-          ) : renderAccessDenied()
-        )}
-      </main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          {activeMenu === 'dashboard' && (
+            hasPermission('access_dashboard') ? (
+              <DashboardView 
+                transactions={transactions}
+                products={products}
+                pettyCashRecords={pettyCashRecords}
+                stockMovements={stockMovements}
+                setActiveMenu={setActiveMenu}
+              />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'products' && (
+            hasPermission('manage_products') ? (
+              <ProductsView 
+                products={products} 
+                onAddProduct={handleAddProduct} 
+                onToggleArchiveProduct={handleToggleArchiveProduct}
+                onUpdateProduct={handleUpdateProduct}
+                canEdit={hasPermission('edit_products')}
+              />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'stock-ledger' && (
+            hasPermission('manage_stock') ? (
+              <StockLedgerView 
+                products={products} 
+                movements={stockMovements} 
+                onAdjustStock={handleAdjustStock} 
+              />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'reports' && (
+            hasPermission('view_reports') ? (
+              <ReportsView 
+                transactions={transactions} 
+                auditLogs={auditLogs}
+                pettyCashRecords={pettyCashRecords}
+              />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'audit-trail' && (
+            hasPermission('view_audit_trail') ? (
+              <AuditTrailView logs={auditLogs} />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'users' && (
+            hasPermission('manage_employees') ? (
+              <UsersView 
+                employees={employees} 
+                roles={roles}
+                onAddEmployee={handleAddEmployee} 
+                onToggleStatus={handleToggleEmployeeStatus} 
+                onAddRole={handleAddRole}
+                onUpdateRolePermissions={handleUpdateRolePermissions}
+              />
+            ) : renderCashierWelcome()
+          )}
+          
+          {activeMenu === 'settings' && (
+            hasPermission('manage_settings') ? (
+              <SettingsView 
+                paymentConfig={paymentConfig} 
+                onUpdatePaymentConfig={handleUpdatePaymentConfig}
+                appName={appName}
+                onUpdateAppName={handleUpdateAppName}
+              />
+            ) : renderCashierWelcome()
+          )}
+        </main>
+      </div>
     </div>
   );
 }

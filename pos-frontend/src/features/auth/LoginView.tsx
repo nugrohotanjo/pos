@@ -6,12 +6,14 @@ interface LoginViewProps {
   employees: Employee[];
   roles: CustomRole[];
   onLoginSuccess: (employee: Employee) => void;
+  appName?: string;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   employees,
   roles,
   onLoginSuccess,
+  appName // <-- Tambahkan ini di sini
 }) => {
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
   const [pin, setPin] = useState('');
@@ -53,19 +55,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
   return (
     <div className="h-screen w-screen bg-slate-950 flex items-center justify-center p-4 font-sans select-none">
       <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800">
-        
+
         {/* Header Login */}
         <div className="bg-slate-900 p-6 text-center text-white relative">
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-600/30 mb-3">
             <Lock className="w-6 h-6 text-white" />
           </div>
-          <h2 className="text-xl font-black tracking-wider uppercase">TOKO SERBA 35.000</h2>
+          <h2 className="text-xl font-black tracking-wider uppercase truncate">
+            {appName || 'TOKO SERBA 35.000'}
+          </h2>
           <p className="text-xs text-indigo-300 font-mono mt-1">Otorisasi Shift & Masuk Sistem</p>
         </div>
 
         {/* Body Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          
+
           {/* Pilih Akun Staf */}
           <div>
             <label className="text-xs font-semibold text-slate-500 block mb-1.5 flex items-center gap-1.5">
@@ -101,16 +105,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <label className="text-xs font-semibold text-slate-500 block text-center">
               Masukkan 4 Digit PIN Otorisasi
             </label>
-            
+
             <div className="flex justify-center items-center gap-3 py-2">
               {[0, 1, 2, 3].map((idx) => (
                 <div
                   key={idx}
-                  className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center text-xl font-mono font-bold transition-all ${
-                    pin.length > idx
+                  className={`w-11 h-11 rounded-2xl border-2 flex items-center justify-center text-xl font-mono font-bold transition-all ${pin.length > idx
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-900 shadow-sm scale-105'
                       : 'border-slate-200 bg-slate-50 text-transparent'
-                  }`}
+                    }`}
                 >
                   {pin.length > idx ? '●' : ''}
                 </div>
@@ -136,7 +139,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 {num}
               </button>
             ))}
-            
+
             <button
               type="button"
               onClick={handleClear}
