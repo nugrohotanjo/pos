@@ -13,6 +13,7 @@ import {
   Square 
 } from 'lucide-react';
 import type { Employee, CustomRole, AppPermission } from '../../types';
+import { Pagination } from '../../components/ui/Pagination';
 
 interface UsersViewProps {
   employees: Employee[];
@@ -24,15 +25,18 @@ interface UsersViewProps {
 }
 
 const ALL_PERMISSIONS: { key: AppPermission; label: string; group: string }[] = [
-  { key: 'access_pos', label: 'Buka Terminal Kasir', group: 'Kasir & Transaksi' },
-  { key: 'void_transaction', label: 'Otorisasi Void / Batal Belanja (PIN)', group: 'Kasir & Transaksi' },
-  { key: 'exchange_items', label: 'Mode Tukar & Retur Barang (F7)', group: 'Kasir & Transaksi' },
-  { key: 'manage_petty_cash', label: 'Kelola Kas Keluar/Masuk Laci (F6)', group: 'Kasir & Transaksi' },
-  { key: 'manage_products', label: 'Tambah & Edit Master SKU Barang', group: 'Inventaris & Gudang' },
-  { key: 'manage_stock', label: 'Input Mutasi Restok & Barang Rusak', group: 'Inventaris & Gudang' },
-  { key: 'view_reports', label: 'Lihat Laporan Penjualan & Audit Log', group: 'Keuangan & Laporan' },
-  { key: 'manage_employees', label: 'Kelola Akun Karyawan & Peran', group: 'Administrasi' },
-  { key: 'manage_settings', label: 'Ubah Jalur Bayar & Pengaturan Toko', group: 'Administrasi' },
+  { key: 'access_dashboard', label: 'Buka Dashboard Pusat', group: 'Menu Navigasi' },
+  { key: 'manage_products', label: 'Buka Master Barang & Soft Delete', group: 'Master Barang' },
+  { key: 'edit_products', label: 'Edit Nama, Stok Manual & Harga Barang', group: 'Master Barang' },
+  { key: 'manage_stock', label: 'Buka Kartu Stok & Catat Mutasi', group: 'Menu Navigasi' },
+  { key: 'view_reports', label: 'Buka Laporan Penjualan & Keuangan', group: 'Menu Navigasi' },
+  { key: 'view_audit_trail', label: 'Buka Audit Trail Global', group: 'Menu Navigasi' },
+  { key: 'manage_employees', label: 'Kelola Staf & Matriks Role', group: 'Menu Navigasi' },
+  { key: 'manage_settings', label: 'Ubah Konfigurasi Jalur Pembayaran', group: 'Menu Navigasi' },
+  { key: 'access_pos', label: 'Buka Layar Kasir POS', group: 'Kasir & Frontline' },
+  { key: 'void_transaction', label: 'Otorisasi PIN Void Pembatalan (F8)', group: 'Kasir & Frontline' },
+  { key: 'exchange_items', label: 'Mode Tukar / Retur Barang (F7)', group: 'Kasir & Frontline' },
+  { key: 'manage_petty_cash', label: 'Input Pengeluaran Kas Laci (F6)', group: 'Kasir & Frontline' },
 ];
 
 export const UsersView: React.FC<UsersViewProps> = ({
@@ -45,14 +49,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'employees' | 'roles'>('employees');
 
-  // Modal State Tambah Karyawan
+  // Pagination state untuk akun karyawan
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const paginatedEmployees = employees.slice((page - 1) * pageSize, page * pageSize);
+
   const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id || '');
   const [pin, setPin] = useState('');
 
-  // Modal State Tambah Role Baru
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDesc, setNewRoleDesc] = useState('');
@@ -96,7 +104,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
   };
 
   const togglePermissionForRole = (role: CustomRole, permKey: AppPermission) => {
-    if (role.id === 'role-owner') return; // Role Owner selalu memegang seluruh izin
+    if (role.id === 'role-owner') return;
     const exists = role.permissions.includes(permKey);
     const updated = exists
       ? role.permissions.filter(p => p !== permKey)
@@ -109,7 +117,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Manajemen Karyawan & Hak Akses</h2>
-          <p className="text-xs text-slate-500 mt-1">Kelola akun staf, struktur peran (*roles*), dan batasan izin operasional</p>
+          <p className="text-xs text-slate-500 mt-1">Konfigurasi akun staf, peran operasional, dan izin menu sidebar</p>
         </div>
 
         {activeTab === 'employees' ? (
@@ -158,8 +166,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
       {activeTab === 'employees' && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            <span>Staf Toko Aktif</span>
-            <span>{employees.length} Pengguna Terdaftar</span>
+            <span>Staf Toko Terdaftar</span>
+            <span>{employees.length} Pengguna</span>
           </div>
 
           <div className="overflow-y-auto flex-1">
@@ -175,7 +183,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {employees.map((emp) => {
+                {paginatedEmployees.map((emp) => {
                   const role = roles.find(r => r.id === emp.roleId);
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50">
@@ -224,24 +232,32 @@ export const UsersView: React.FC<UsersViewProps> = ({
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={page}
+            pageSize={pageSize}
+            totalItems={employees.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 
-      {/* TAB 2: PERMISSION MATRIX PER ROLE */}
+      {/* TAB 2: MATRIKS PERMISSION */}
       {activeTab === 'roles' && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Matrix Izin Fitur (Custom Role Permissions)
+              Matrix Izin Menu & Fitur (Centang = Akses Dibuka)
             </span>
-            <span className="text-xs text-slate-400">Centang kotak untuk memberikan akses ke role tertentu</span>
+            <span className="text-xs text-slate-400">Menu otomatis tersembunyi di sidebar jika tidak dicentang</span>
           </div>
 
           <div className="overflow-auto flex-1">
             <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-slate-50 text-slate-700 sticky top-0 border-b z-10">
                 <tr>
-                  <th className="py-3 px-6 w-1/3">Fitur & Izin Akses</th>
+                  <th className="py-3 px-6 w-1/3">Fitur & Menu Navigasi</th>
                   {roles.map(role => (
                     <th key={role.id} className="py-3 px-4 text-center">
                       <span className="font-bold text-slate-800 block">{role.name}</span>
@@ -288,7 +304,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 1: TAMBAH KARYAWAN */}
+      {/* MODAL TAMBAH KARYAWAN */}
       {isEmpModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -372,7 +388,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 2: TAMBAH ROLE BARU */}
+      {/* MODAL TAMBAH ROLE BARU */}
       {isRoleModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl space-y-4">
@@ -392,7 +408,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Leader Gudang / Kasir Senior"
+                  placeholder="Contoh: Kasir Senior / Leader Toko"
                   value={newRoleName}
                   onChange={(e) => setNewRoleName(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -400,10 +416,10 @@ export const UsersView: React.FC<UsersViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Deskripsi Singkat</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Deskripsi</label>
                 <input
                   type="text"
-                  placeholder="Contoh: Bertanggung jawab atas stok dan void transaksi laci"
+                  placeholder="Deskripsi wewenang role..."
                   value={newRoleDesc}
                   onChange={(e) => setNewRoleDesc(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"

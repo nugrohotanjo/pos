@@ -1,10 +1,33 @@
+export type ProductAuditHistory = {
+  id: string;
+  timestamp: string;
+  updatedBy: string;
+  oldValues: {
+    name: string;
+    category: string;
+    stock: number;
+    price?: number;
+    costPrice?: number;
+  };
+  newValues: {
+    name: string;
+    category: string;
+    stock: number;
+    price?: number;
+    costPrice?: number;
+  };
+  reason: string;
+};
+
 export type Product = {
   barcode: string;
   name: string;
   category: string;
   stock: number;
   price?: number;
-  isActive?: boolean; // Soft delete flag
+  costPrice?: number;
+  isActive?: boolean;
+  history?: ProductAuditHistory[]; // Catatan riwayat audit tiap produk
 };
 
 export type CartItem = Product & {
@@ -21,6 +44,15 @@ export type HeldOrder = {
 
 export type StockMovementType = 'IN' | 'OUT_DAMAGED' | 'OUT_LOST' | 'AUDIT_ADJUSTMENT' | 'CUSTOMER_RETURN';
 
+export type StockBatch = {
+  id: string;
+  barcode: string;
+  purchaseCost: number;
+  initialQty: number;
+  remainingQty: number;
+  receivedAt: string;
+};
+
 export type StockMovement = {
   id: string;
   timestamp: string;
@@ -28,6 +60,7 @@ export type StockMovement = {
   productName: string;
   type: StockMovementType;
   quantity: number;
+  purchaseCost?: number;
   reason: string;
   recordedBy: string;
 };
@@ -44,8 +77,11 @@ export type TransactionItemSnapshot = {
   barcode: string;
   name: string;
   price: number;
+  costPrice: number;
   qty: number;
   subtotal: number;
+  dpp: number;
+  taxAmount: number;
   isReturn?: boolean;
 };
 
@@ -56,6 +92,10 @@ export type TransactionRecord = {
   cashierName: string;
   totalQty: number;
   grossAmount: number;
+  totalDpp: number;
+  totalTax: number;
+  totalCogs: number;
+  grossProfit: number;
   mdrRate: number;
   mdrFee: number;
   netSettlement: number;
@@ -76,6 +116,7 @@ export type AuditModule =
 
 export type AuditActionType = 
   | 'CREATE_PRODUCT'
+  | 'UPDATE_PRODUCT'
   | 'ARCHIVE_PRODUCT'
   | 'RESTORE_PRODUCT'
   | 'STOCK_MUTATION'
@@ -102,16 +143,18 @@ export type AuditLog = {
 };
 
 export type AppPermission = 
+  | 'access_dashboard'
+  | 'manage_products'
+  | 'edit_products' // Permission edit nama, stok, harga barang
+  | 'manage_stock'
+  | 'view_reports'
+  | 'view_audit_trail'
+  | 'manage_employees'
+  | 'manage_settings'
   | 'access_pos'
   | 'void_transaction'
   | 'exchange_items'
-  | 'manage_petty_cash'
-  | 'view_reports'
-  | 'view_audit_trail'
-  | 'manage_stock'
-  | 'manage_products'
-  | 'manage_employees'
-  | 'manage_settings';
+  | 'manage_petty_cash';
 
 export type CustomRole = {
   id: string;

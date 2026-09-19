@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, AlertOctagon, History, Plus } from 'lucide-react';
 import type { Product, StockMovement, StockMovementType } from '../../types';
+import { Pagination } from '../../components/ui/Pagination';
+import { DateRangeFilter } from '../../components/ui/DateRangeFilter';
 
 interface StockLedgerViewProps {
   products: Product[];
-  onAdjustStock: (barcode: string, quantity: number, type: StockMovementType, reason: string) => void;
+  onAdjustStock: (barcode: string, quantity: number, type: StockMovementType, reason: string, purchaseCost?: number) => void;
   movements: StockMovement[];
 }
 
@@ -13,36 +15,96 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({ products, onAd
   const [selectedBarcode, setSelectedBarcode] = useState(products[0]?.barcode || '');
   const [type, setType] = useState<StockMovementType>('IN');
   const [qty, setQty] = useState<number>(10);
+  const [costPrice, setCostPrice] = useState<number>(20000);
   const [reason, setReason] = useState('');
+
+  // Filter Tanggal
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const isDateInRange = (rawTimestamp: string) => {
+    if (!startDate && !endDate) return true;
+    let itemDateStr = '';
+    if (rawTimestamp.includes('-')) {
+      itemDateStr = rawTimestamp.split(' ')[0].replace(/\//g, '-');
+    } else if (rawTimestamp.includes('/')) {
+      const parts = rawTimestamp.split(' ')[0].split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        itemDateStr = `${year}-${month}-${day}`;
+      }
+    }
+    if (!itemDateStr) return true;
+    if (startDate && itemDateStr < startDate) return false;
+    if (endDate && itemDateStr > endDate) return false;
+    return true;
+  };
+
+  const filteredMovements = movements.filter(m => isDateInRange(m.timestamp));
+  const paginatedMovements = filteredMovements.slice((page - 1) * pageSize, page * pageSize);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBarcode || qty <= 0) return;
 
-    onAdjustStock(selectedBarcode, qty, type, reason || (type === 'IN' ? 'Restok Supplier' : 'Barang Rusak/Penyusutan'));
+    onAdjustStock(
+      selectedBarcode, 
+      qty, 
+      type, 
+      reason || (type === 'IN' ? 'Restok Supplier' : 'Barang Rusak/Penyusutan'),
+      type === 'IN' ? costPrice : undefined
+    );
+
     setIsModalOpen(false);
     setReason('');
     setQty(10);
+    setCostPrice(20000);
   };
 
   return (
     <div className="p-8 h-full flex flex-col space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Kartu Stok & Audit Mutasi</h2>
-          <p className="text-xs text-slate-500 mt-1">Pencatatan barang masuk (restok), barang cacat, dan penyusutan inventaris</p>
+          <h2 className="text-2xl font-bold text-slate-800">Kartu Stok & Audit Batch FIFO</h2>
+          <p className="text-xs text-slate-500 mt-1">Pencatatan restok barang masuk dengan harga modal (HPP) dan penyusutan inventaris</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-colors"
         >
-          <Plus className="w-4 h-4" /> Catat Mutasi / Restok
+          <Plus className="w-4 h-4" /> Catat Mutasi / Restok Batch
         </button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          <History className="w-4 h-4" /> Log Riwayat Mutasi Barang
+        <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <History className="w-4 h-4" /> Log Mutasi Stok ({filteredMovements.length} Mutasi)
+          </div>
+
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={(d) => {
+              setStartDate(d);
+              setPage(1);
+            }}
+            onEndDateChange={(d) => {
+              setEndDate(d);
+              setPage(1);
+            }}
+            onReset={() => {
+              setStartDate('');
+              setEndDate('');
+              setPage(1);
+            }}
+          />
         </div>
 
         <div className="overflow-y-auto flex-1">
@@ -53,12 +115,13 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({ products, onAd
                 <th className="py-3 px-6">Barcode & Barang</th>
                 <th className="py-3 px-6">Tipe Mutasi</th>
                 <th className="py-3 px-6 text-center">Qty</th>
+                <th className="py-3 px-6 text-right">Biaya Beli (HPP)</th>
                 <th className="py-3 px-6">Keterangan / Alasan</th>
                 <th className="py-3 px-6">Petugas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {movements.map((m) => (
+              {paginatedMovements.map((m) => (
                 <tr key={m.id} className="hover:bg-slate-50">
                   <td className="py-3 px-6 text-xs text-slate-400 font-mono">{m.timestamp}</td>
                   <td className="py-3 px-6">
@@ -68,7 +131,7 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({ products, onAd
                   <td className="py-3 px-6">
                     {m.type === 'IN' ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded text-xs font-semibold border border-emerald-200">
-                        <ArrowDownRight className="w-3.5 h-3.5" /> Stok Masuk
+                        <ArrowDownRight className="w-3.5 h-3.5" /> Stok Masuk (FIFO Batch)
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2.5 py-1 rounded text-xs font-semibold border border-rose-200">
@@ -79,23 +142,34 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({ products, onAd
                   <td className="py-3 px-6 text-center font-bold text-slate-800">
                     {m.type === 'IN' ? `+${m.quantity}` : `-${m.quantity}`}
                   </td>
+                  <td className="py-3 px-6 text-right font-mono text-xs">
+                    {m.purchaseCost ? `Rp ${m.purchaseCost.toLocaleString('id-ID')}` : '-'}
+                  </td>
                   <td className="py-3 px-6 text-xs text-slate-600">{m.reason}</td>
                   <td className="py-3 px-6 text-xs font-medium text-slate-700">{m.recordedBy}</td>
                 </tr>
               ))}
-              {movements.length === 0 && (
+              {paginatedMovements.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-400">
-                    Belum ada riwayat mutasi stok tercatat.
+                  <td colSpan={7} className="py-16 text-center text-slate-400">
+                    Tidak ada riwayat mutasi stok pada rentang tanggal ini.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          currentPage={page}
+          pageSize={pageSize}
+          totalItems={filteredMovements.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
-      {/* MODAL CATAT PENYESUAIAN STOK */}
+      {/* Modal Input Mutasi */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -141,23 +215,40 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({ products, onAd
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Jumlah (Pcs)</label>
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={qty}
-                  onChange={(e) => setQty(Number(e.target.value))}
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Jumlah (Pcs)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={qty}
+                    onChange={(e) => setQty(Number(e.target.value))}
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                {type === 'IN' && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Harga Beli/Pcs (HPP)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={500}
+                      required
+                      value={costPrice}
+                      onChange={(e) => setCostPrice(Number(e.target.value))}
+                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Alasan / Catatan Audit</label>
                 <input
                   type="text"
-                  placeholder="Contoh: Pengiriman batch supplier baru #401"
+                  placeholder="Contoh: Pengiriman batch supplier #702"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"

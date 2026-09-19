@@ -1,58 +1,76 @@
 import React from 'react';
-import { Globe } from 'lucide-react';
-import type { ActiveMenu } from '../../types';
-import { translations, type Language } from '../../data/translations';
+import { LogOut, Globe, User } from 'lucide-react';
+import type { ActiveMenu, Employee, CustomRole } from '../../types';
+import type { Language } from '../../data/translations';
 
 interface HeaderProps {
   activeMenu: ActiveMenu;
   lang: Language;
   setLang: (lang: Language) => void;
+  currentUser: Employee;
+  userRole?: CustomRole;
+  onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeMenu, lang, setLang }) => {
-  const t = translations[lang];
+export const Header: React.FC<HeaderProps> = ({
+  activeMenu,
+  lang,
+  setLang,
+  currentUser,
+  userRole,
+  onLogout,
+}) => {
+  const getMenuTitle = () => {
+    switch (activeMenu) {
+      case 'dashboard': return 'Dashboard Pusat';
+      case 'products': return 'Master Data Barang & Stok';
+      case 'stock-ledger': return 'Kartu Stok & Audit Mutasi FIFO';
+      case 'reports': return 'Laporan Keuangan & Penjualan';
+      case 'audit-trail': return 'Sistem Audit Trail Global';
+      case 'users': return 'Manajemen Karyawan & Hak Akses';
+      case 'settings': return 'Pengaturan Jalur Pembayaran';
+      default: return 'Terminal Kasir';
+    }
+  };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-      <h2 className="text-lg font-bold text-slate-800">
-        {activeMenu === 'dashboard' && t.dashboardTitle}
-        {activeMenu === 'products' && t.inventoryTitle}
-      </h2>
+    <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between select-none">
+      <div>
+        <h1 className="text-lg font-bold text-slate-800">{getMenuTitle()}</h1>
+      </div>
 
-      <div className="flex items-center gap-5">
-        {/* Language Switcher */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
-          <Globe className="w-3.5 h-3.5 text-slate-500 ml-1.5 mr-1" />
-          <button
-            type="button"
-            onClick={() => setLang('id')}
-            className={`px-2 py-1 rounded transition-colors ${
-              lang === 'id' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            ID
-          </button>
-          <button
-            type="button"
-            onClick={() => setLang('en')}
-            className={`px-2 py-1 rounded transition-colors ${
-              lang === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            EN
-          </button>
-        </div>
-
-        {/* User Info */}
-        <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
-          <div className="text-right">
-            <p className="text-sm font-bold text-slate-700">Fadhil</p>
-            <p className="text-xs text-slate-400">Owner</p>
+      <div className="flex items-center gap-4">
+        {/* User Info Tag */}
+        <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+          <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+            {currentUser.name.charAt(0)}
           </div>
-          <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
-            F
+          <div>
+            <span className="font-bold text-slate-800 block leading-tight">{currentUser.name}</span>
+            <span className="text-[10px] text-slate-400 font-mono block leading-tight">
+              {userRole?.name || 'Staf'}
+            </span>
           </div>
         </div>
+
+        {/* Switch Bahasa */}
+        <button
+          onClick={() => setLang(lang === 'id' ? 'en' : 'id')}
+          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+        >
+          <Globe className="w-3.5 h-3.5" />
+          <span className="uppercase">{lang}</span>
+        </button>
+
+        {/* Tombol Logout */}
+        <button
+          onClick={onLogout}
+          title="Keluar dari sesi akun saat ini"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Keluar (Logout)</span>
+        </button>
       </div>
     </header>
   );

@@ -8,7 +8,6 @@ import {
   PauseCircle, 
   PlayCircle, 
   KeyRound, 
-  CheckCircle2, 
   X,
   DoorClosed,
   Keyboard,
@@ -38,7 +37,13 @@ interface PosViewProps {
   pettyCashRecords: PettyCashEntry[];
   onAddPettyCash: (entry: PettyCashEntry) => void;
   onAddAuditLog: (log: AuditLog) => void;
-  onCompleteTransaction: (cart: CartItem[], total: number, method: PaymentMethod, cashReceived: number, change: number) => TransactionRecord;
+  onCompleteTransaction: (
+    cart: CartItem[], 
+    total: number, 
+    method: PaymentMethod, 
+    cashReceived: number, 
+    change: number
+  ) => TransactionRecord;
 }
 
 export const PosView: React.FC<PosViewProps> = ({ 
@@ -56,7 +61,7 @@ export const PosView: React.FC<PosViewProps> = ({
   
   const [isReturnMode, setIsReturnMode] = useState(false);
 
-  // State Modal Pembayaran & Struk
+  // State Modal Pembayaran & Struk Thermal
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentMethod>('CASH');
   const [cashReceived, setCashReceived] = useState<number>(0);
@@ -193,7 +198,7 @@ export const PosView: React.FC<PosViewProps> = ({
       setVoidError('');
       refocusSearch();
     } else {
-      setVoidError('PIN Supervisor salah! (Gunakan demo: 1234)');
+      setVoidError('PIN Supervisor salah! (Gunakan PIN demo: 1234)');
     }
   };
 
@@ -234,7 +239,7 @@ export const PosView: React.FC<PosViewProps> = ({
       if (e.key === 'F1') {
         e.preventDefault();
         if (!paymentConfig.cashEnabled) {
-          alert('Metode Tunai sedang dinonaktifkan oleh Admin!');
+          alert('Metode Tunai dinonaktifkan Admin!');
           return;
         }
         if (cart.length > 0) {
@@ -248,7 +253,7 @@ export const PosView: React.FC<PosViewProps> = ({
       if (e.key === 'F2') {
         e.preventDefault();
         if (!paymentConfig.qrisEnabled && !paymentConfig.edcEnabled) {
-          alert('Semua metode pembayaran digital (QRIS/EDC) sedang dimatikan/gangguan!');
+          alert('Jalur pembayaran digital sedang nonaktif/gangguan!');
           return;
         }
         if (cart.length > 0) {
@@ -304,7 +309,7 @@ export const PosView: React.FC<PosViewProps> = ({
         actor: 'Budi Santoso (Kasir)',
         module: 'POS_TERMINAL',
         action: 'EXCHANGE_REFUND',
-        details: `Transaksi tukar barang diproses. Net Bayar: Rp ${total.toLocaleString('id-ID')}`,
+        details: `Transaksi retur/tukar diproses. Net Bayar: Rp ${total.toLocaleString('id-ID')}`,
         status: 'APPROVED'
       });
     }
@@ -314,13 +319,13 @@ export const PosView: React.FC<PosViewProps> = ({
     setIsPaymentOpen(false);
     setCart([]);
     setCashReceived(0);
-    setCompletedReceipt(receipt); // Munculkan dialog preview struk belanja
+    setCompletedReceipt(receipt);
   };
 
   return (
     <div className="flex h-screen bg-slate-50 absolute inset-0 z-50 select-none">
       
-      {/* Kolom Kiri: Barcode & Keranjang */}
+      {/* Kolom Kiri */}
       <div className="w-[60%] flex flex-col border-r border-slate-200 bg-white">
         
         {/* Header POS */}
@@ -382,11 +387,11 @@ export const PosView: React.FC<PosViewProps> = ({
           </div>
         </div>
 
-        {/* Banner Peringatan Mode Retur */}
+        {/* Mode Retur Banner */}
         {isReturnMode && (
           <div className="bg-amber-500 text-slate-900 px-6 py-2 text-xs font-bold flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Repeat className="w-4 h-4" /> MODE RETUR AKTIF: Scan barang lama yang ingin dikembalikan pelanggan (minus Rp 35.000)
+              <Repeat className="w-4 h-4" /> MODE RETUR AKTIF: Scan barang yang dikembalikan pelanggan (minus Rp 35.000)
             </span>
             <button onClick={() => setIsReturnMode(false)} className="text-xs underline font-black">
               Batalkan Mode Retur (Esc)
@@ -401,7 +406,7 @@ export const PosView: React.FC<PosViewProps> = ({
             <input 
               ref={searchRef} 
               type="text" 
-              placeholder={isReturnMode ? "SCAN BARANG YANG DIKEMBALIKAN (RETUR)..." : "Scan Barcode / Ketik Nama Barang + Enter..."}
+              placeholder={isReturnMode ? "SCAN BARANG RETUR (DIKEMBALIKAN)..." : "Scan Barcode / Ketik Nama Barang + Enter..."}
               value={barcodeInput} 
               onChange={e => setBarcodeInput(e.target.value)} 
               onKeyDown={handleBarcode}
@@ -464,7 +469,7 @@ export const PosView: React.FC<PosViewProps> = ({
           </table>
         </div>
 
-        {/* Bar Shortcut Helper */}
+        {/* Bar Shortcut */}
         <div className="p-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-3">
             <span className={`flex items-center gap-1 font-mono ${!paymentConfig.cashEnabled ? 'line-through text-slate-400' : ''}`}>
@@ -500,11 +505,11 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       </div>
 
-      {/* Kolom Kanan: Ringkasan Tagihan & Tender */}
+      {/* Kolom Kanan */}
       <div className="w-[40%] bg-slate-50 flex flex-col shadow-2xl z-10">
         <div className="h-64 bg-indigo-600 flex flex-col items-center justify-center text-white p-6 text-center">
           <p className="text-indigo-200 font-medium text-lg uppercase tracking-wider mb-2">
-            {total < 0 ? 'Kembalikan Uang ke Pelanggan' : 'Total Tagihan Pelanggan'}
+            {total < 0 ? 'Kembalikan Uang ke Pelanggan' : 'Total Tagihan (Termasuk PPN)'}
           </p>
           <h2 className="text-6xl font-bold tracking-tight">
             {total < 0 ? `-Rp ${Math.abs(total).toLocaleString('id-ID')}` : `Rp ${total.toLocaleString('id-ID')}`}
@@ -607,13 +612,13 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       )}
 
-      {/* MODAL DIALOG STRUK THERMAL BELANJA (RECEIPT MODAL) */}
+      {/* MODAL DIALOG STRUK THERMAL BELANJA LENGKAP PPN ITEM-LEVEL */}
       {completedReceipt && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 font-mono text-slate-800">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-3 font-mono text-slate-800">
             <div className="text-center border-b pb-3 space-y-1">
               <h3 className="font-black text-lg tracking-wider">TOKO SERBA 35.000</h3>
-              <p className="text-[11px] text-slate-500">Pusat Grosir & Retail Terjangkau</p>
+              <p className="text-[11px] text-slate-500">NPWP: 01.234.567.8-012.000</p>
               <p className="text-[10px] text-slate-400">{completedReceipt.timestamp}</p>
             </div>
 
@@ -627,32 +632,41 @@ export const PosView: React.FC<PosViewProps> = ({
                 <span>{completedReceipt.cashierName}</span>
               </div>
               <div className="flex justify-between">
-                <span>Metode:</span>
+                <span>Metode Bayar:</span>
                 <span className="font-bold">{completedReceipt.paymentMethod}</span>
               </div>
             </div>
 
             {/* List Barang Snapshot */}
-            <div className="max-h-48 overflow-y-auto space-y-2 text-xs py-1 border-b">
+            <div className="max-h-44 overflow-y-auto space-y-2 text-xs py-1 border-b">
               {completedReceipt.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-start">
-                  <div>
-                    <span className="font-bold block">{item.name}</span>
-                    <span className="text-[10px] text-slate-400">
-                      {item.qty} x Rp {item.price.toLocaleString('id-ID')}
+                <div key={idx} className="space-y-0.5">
+                  <div className="flex justify-between items-start font-bold">
+                    <span>{item.name}</span>
+                    <span className={item.subtotal < 0 ? 'text-amber-600' : ''}>
+                      {item.subtotal < 0 ? '-' : ''}Rp {Math.abs(item.subtotal).toLocaleString('id-ID')}
                     </span>
                   </div>
-                  <span className={`font-bold ${item.subtotal < 0 ? 'text-amber-600' : ''}`}>
-                    {item.subtotal < 0 ? '-' : ''}Rp {Math.abs(item.subtotal).toLocaleString('id-ID')}
-                  </span>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>{item.qty} x Rp {item.price.toLocaleString('id-ID')}</span>
+                    <span>DPP: Rp {item.dpp.toLocaleString('id-ID')} | PPN: Rp {item.taxAmount.toLocaleString('id-ID')}</span>
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* Rekap Total & Kembalian */}
+            {/* Rekap Pajak PPN & Kembalian */}
             <div className="space-y-1 text-xs border-b pb-2">
-              <div className="flex justify-between font-bold text-sm">
-                <span>Total:</span>
+              <div className="flex justify-between text-slate-500">
+                <span>Dasar Pengenaan Pajak (DPP):</span>
+                <span>Rp {completedReceipt.totalDpp.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>PPN 11% (Item Rounding):</span>
+                <span>Rp {completedReceipt.totalTax.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between font-bold text-sm border-t pt-1 text-slate-900">
+                <span>Total Belanja:</span>
                 <span>Rp {completedReceipt.grossAmount.toLocaleString('id-ID')}</span>
               </div>
               {completedReceipt.paymentMethod === 'CASH' && (
@@ -669,8 +683,8 @@ export const PosView: React.FC<PosViewProps> = ({
               )}
             </div>
 
-            <p className="text-center text-[10px] text-slate-400">
-              Terima kasih telah berbelanja!<br />Barang yang telah dibeli dapat ditukar dalam 1x24 jam.
+            <p className="text-center text-[10px] text-slate-400 leading-tight">
+              Harga sudah termasuk PPN 11%.<br />Barang yang telah dibeli dapat ditukar 1x24 jam membawa struk ini.
             </p>
 
             <div className="grid grid-cols-2 gap-2 pt-2">

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  ShieldCheck, 
   Search, 
   Filter, 
   Download, 
@@ -12,6 +11,9 @@ import {
   ArrowLeftRight 
 } from 'lucide-react';
 import type { AuditLog, AuditModule } from '../../types';
+import { Pagination } from '../../components/ui/Pagination';
+import { DateRangeFilter } from '../../components/ui/DateRangeFilter';
+import { exportToCsv } from '../../utils/exportCsv';
 
 interface AuditTrailViewProps {
   logs: AuditLog[];
@@ -22,9 +24,38 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'APPROVED' | 'AUTO_RECORDED' | 'REJECTED'>('ALL');
 
+  // Filter Tanggal
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const isDateInRange = (rawTimestamp: string) => {
+    if (!startDate && !endDate) return true;
+    let itemDateStr = '';
+    if (rawTimestamp.includes('-')) {
+      itemDateStr = rawTimestamp.split(' ')[0].replace(/\//g, '-');
+    } else if (rawTimestamp.includes('/')) {
+      const parts = rawTimestamp.split(' ')[0].split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        itemDateStr = `${year}-${month}-${day}`;
+      }
+    }
+    if (!itemDateStr) return true;
+    if (startDate && itemDateStr < startDate) return false;
+    if (endDate && itemDateStr > endDate) return false;
+    return true;
+  };
+
   const filteredLogs = logs.filter((log) => {
     const matchModule = selectedModule === 'ALL' || log.module === selectedModule;
     const matchStatus = selectedStatus === 'ALL' || log.status === selectedStatus;
+    const matchDate = isDateInRange(log.timestamp);
     const query = searchQuery.toLowerCase();
     const matchSearch = 
       log.actor.toLowerCase().includes(query) ||
@@ -32,8 +63,26 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
       log.action.toLowerCase().includes(query) ||
       log.id.toLowerCase().includes(query);
 
-    return matchModule && matchStatus && matchSearch;
+    return matchModule && matchStatus && matchDate && matchSearch;
   });
+
+  const paginatedLogs = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleExportAudit = () => {
+    const headers = ['ID Log', 'Waktu', 'Pelaku / Aktor', 'Modul Sumber', 'Aksi', 'Rincian Perubahan', 'Status'];
+    const dataRows = filteredLogs.map(l => [
+      l.id,
+      l.timestamp,
+      l.actor,
+      l.module,
+      l.action,
+      l.details,
+      l.status
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    exportToCsv(`audit-trail-global-${dateStr}.csv`, [headers, ...dataRows]);
+  };
 
   const getModuleBadge = (module: AuditModule) => {
     switch (module) {
@@ -89,16 +138,16 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
 
   return (
     <div className="p-8 h-full flex flex-col space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Sistem Audit Trail Global</h2>
           <p className="text-xs text-slate-500 mt-1">Rekaman jejak aktivitas seluruh aksi, perubahan stok, manipulasi laci, dan konfigurasi toko</p>
         </div>
         <button
-          onClick={() => alert('Data log siap diekspor ke backend audit')}
+          onClick={handleExportAudit}
           className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-colors"
         >
-          <Download className="w-4 h-4" /> Ekspor Log Audit
+          <Download className="w-4 h-4" /> Ekspor Log CSV
         </button>
       </div>
 
@@ -106,40 +155,46 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
         {/* Filter Bar */}
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Input Pencarian */}
-            <div className="relative w-72">
+            <div className="relative w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Cari aktor, id, atau rincian..."
+                placeholder="Cari aktor, id, aksi..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            {/* Filter Sumber Modul */}
             <div className="flex items-center gap-1.5">
               <Filter className="w-3.5 h-3.5 text-slate-400" />
               <select
                 value={selectedModule}
-                onChange={(e) => setSelectedModule(e.target.value as any)}
+                onChange={(e) => {
+                  setSelectedModule(e.target.value as any);
+                  setPage(1);
+                }}
                 className="px-2.5 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="ALL">Semua Sumber Modul</option>
+                <option value="ALL">Semua Modul</option>
                 <option value="PRODUCTS">Master Produk</option>
                 <option value="INVENTORY">Mutasi Stok</option>
-                <option value="POS_TERMINAL">Terminal Kasir (POS)</option>
-                <option value="PETTY_CASH">Kas Laci Kasir</option>
+                <option value="POS_TERMINAL">Terminal Kasir</option>
+                <option value="PETTY_CASH">Kas Laci</option>
                 <option value="USERS_ROLES">Karyawan & Hak Akses</option>
-                <option value="SETTINGS">Pengaturan Toko</option>
+                <option value="SETTINGS">Pengaturan</option>
               </select>
             </div>
 
-            {/* Filter Status */}
             <select
               value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value as any)}
+              onChange={(e) => {
+                setSelectedStatus(e.target.value as any);
+                setPage(1);
+              }}
               className="px-2.5 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="ALL">Semua Status</option>
@@ -147,10 +202,29 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
               <option value="AUTO_RECORDED">Sistem Otomatis</option>
               <option value="REJECTED">Ditolak</option>
             </select>
+
+            {/* Filter Date Range */}
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={(d) => {
+                setStartDate(d);
+                setPage(1);
+              }}
+              onEndDateChange={(d) => {
+                setEndDate(d);
+                setPage(1);
+              }}
+              onReset={() => {
+                setStartDate('');
+                setEndDate('');
+                setPage(1);
+              }}
+            />
           </div>
 
           <div className="text-xs font-semibold text-slate-500">
-            Menampilkan {filteredLogs.length} dari {logs.length} Log
+            Total {filteredLogs.length} Log
           </div>
         </div>
 
@@ -168,7 +242,7 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredLogs.map((log) => (
+              {paginatedLogs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                   <td className="py-3.5 px-6">
                     <span className="font-mono text-xs font-bold text-indigo-600 block">{log.id}</span>
@@ -181,16 +255,24 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
                   <td className="py-3.5 px-6 text-center">{getStatusBadge(log.status)}</td>
                 </tr>
               ))}
-              {filteredLogs.length === 0 && (
+              {paginatedLogs.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-16 text-center text-slate-400">
-                    Tidak ada catatan riwayat audit sesuai filter.
+                    Tidak ada catatan riwayat audit pada rentang tanggal ini.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          currentPage={page}
+          pageSize={pageSize}
+          totalItems={filteredLogs.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
     </div>
   );
