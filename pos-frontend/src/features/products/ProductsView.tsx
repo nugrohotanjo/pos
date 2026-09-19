@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Pencil,
   History,
-  Lock
+  Tag
 } from 'lucide-react';
 import type { Product } from '../../types';
 import { FIXED_PRICE } from '../../data/mockData';
@@ -62,16 +62,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const [categories, setCategories] = useState<string[]>([
-    'Pakaian',
-    'Perabotan',
-    'Mainan',
-    'Aksesoris'
-  ]);
+  // Kategori Dinamis: Menggabungkan kategori default dengan kategori yang sudah ada pada data produk
+  const [categories, setCategories] = useState<string[]>(() => {
+    const defaultCats = ['Pakaian', 'Perabotan', 'Mainan', 'Aksesoris'];
+    const existingCats = products.map(p => p.category).filter(Boolean);
+    return Array.from(new Set([...defaultCats, ...existingCats]));
+  });
 
   const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
   const [catSearchQuery, setCatSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Sinkronisasi kategori otomatis jika ada produk baru dengan kategori unik
+  useEffect(() => {
+    const productCats = products.map(p => p.category).filter(Boolean);
+    setCategories(prev => Array.from(new Set([...prev, ...productCats])));
+  }, [products]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -174,8 +180,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     <div className="p-8 h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Master Data Barang</h2>
-          <p className="text-xs text-slate-500 mt-1">Katalog toko serba Rp 35.000 dengan audit trail per-SKU</p>
+          <h2 className="text-2xl font-bold text-slate-800">Master Data Barang & Kategori</h2>
+          <p className="text-xs text-slate-500 mt-1">Katalog toko serba Rp 35.000 dengan manajemen kategori dinamis dan audit trail</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
@@ -209,9 +215,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 setSelectedCategoryFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold"
             >
-              <option value="Semua">Semua Kategori</option>
+              <option value="Semua">Semua Kategori ({products.length})</option>
               {categories.map((cat) => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
@@ -263,8 +269,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       {isArchived && <span className="text-[10px] ml-2 text-slate-400 font-normal">(Diarsipkan)</span>}
                     </td>
                     <td className="py-3 px-6">
-                      <span className="px-2.5 py-1 bg-slate-100 rounded-md text-xs font-semibold text-slate-700">
-                        {p.category}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 rounded-md text-xs font-semibold text-indigo-700 border border-indigo-200">
+                        <Tag className="w-3 h-3" /> {p.category || 'Umum'}
                       </span>
                     </td>
                     <td className="py-3 px-6 text-right font-semibold text-slate-700">
@@ -501,7 +507,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <div className="max-h-80 overflow-y-auto space-y-3">
               {(viewHistoryProduct.history && viewHistoryProduct.history.length > 0) ? (
                 viewHistoryProduct.history.map((h) => {
-                  // Cek field mana saja yang mengalami perubahan nilai
                   const isNameChanged = h.oldValues.name !== h.newValues.name;
                   const isCategoryChanged = h.oldValues.category !== h.newValues.category;
                   const isStockChanged = h.oldValues.stock !== h.newValues.stock;
@@ -519,7 +524,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       </p>
 
                       <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
-                        {/* Kolom Nilai Sebelum */}
                         <div className="p-2.5 bg-rose-50/60 border border-rose-200 rounded text-rose-800 space-y-1">
                           <span className="font-bold block mb-1 text-xs uppercase tracking-wider text-rose-900 border-b border-rose-200 pb-1">
                             Nilai Sebelum:
@@ -538,7 +542,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Kolom Nilai Sesudah */}
                         <div className="p-2.5 bg-emerald-50/60 border border-emerald-200 rounded text-emerald-800 space-y-1">
                           <span className="font-bold block mb-1 text-xs uppercase tracking-wider text-emerald-900 border-b border-emerald-200 pb-1">
                             Nilai Sesudah:
