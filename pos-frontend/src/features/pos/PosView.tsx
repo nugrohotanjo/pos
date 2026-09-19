@@ -16,7 +16,7 @@ import {
   ArrowUpCircle,
   Coins,
   Repeat,
-  AlertTriangle
+  Printer
 } from 'lucide-react';
 import type { 
   Product, 
@@ -26,7 +26,8 @@ import type {
   PettyCashEntry, 
   AuditLog, 
   PaymentConfig, 
-  PaymentMethod 
+  PaymentMethod,
+  TransactionRecord
 } from '../../types';
 import { FIXED_PRICE } from '../../data/mockData';
 
@@ -37,7 +38,7 @@ interface PosViewProps {
   pettyCashRecords: PettyCashEntry[];
   onAddPettyCash: (entry: PettyCashEntry) => void;
   onAddAuditLog: (log: AuditLog) => void;
-  onCompleteTransaction: (cart: CartItem[], total: number, method: PaymentMethod) => void;
+  onCompleteTransaction: (cart: CartItem[], total: number, method: PaymentMethod, cashReceived: number, change: number) => TransactionRecord;
 }
 
 export const PosView: React.FC<PosViewProps> = ({ 
@@ -53,14 +54,13 @@ export const PosView: React.FC<PosViewProps> = ({
   const [barcodeInput, setBarcodeInput] = useState('');
   const [heldOrders, setHeldOrders] = useState<HeldOrder[]>([]);
   
-  // State Mode Retur / Tukar Barang
   const [isReturnMode, setIsReturnMode] = useState(false);
 
-  // State Modal Pembayaran
+  // State Modal Pembayaran & Struk
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentMethod>('CASH');
   const [cashReceived, setCashReceived] = useState<number>(0);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [completedReceipt, setCompletedReceipt] = useState<TransactionRecord | null>(null);
 
   // State Void Modal & PIN Supervisor
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
@@ -115,10 +115,10 @@ export const PosView: React.FC<PosViewProps> = ({
   };
 
   useEffect(() => {
-    if (!isPaymentOpen && !isVoidModalOpen && !isShiftCloseOpen && !isPettyCashOpen) {
+    if (!isPaymentOpen && !isVoidModalOpen && !isShiftCloseOpen && !isPettyCashOpen && !completedReceipt) {
       refocusSearch();
     }
-  }, [isPaymentOpen, isVoidModalOpen, isShiftCloseOpen, isPettyCashOpen]);
+  }, [isPaymentOpen, isVoidModalOpen, isShiftCloseOpen, isPettyCashOpen, completedReceipt]);
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -181,6 +181,7 @@ export const PosView: React.FC<PosViewProps> = ({
         id: `AUD-${Date.now().toString().slice(-4)}`,
         timestamp: new Date().toLocaleString('id-ID'),
         actor: 'Supervisor (PIN: 1234)',
+        module: 'POS_TERMINAL',
         action: 'VOID_ORDER',
         details: `Membatalkan seluruh pesanan keranjang (${cart.length} item, total Rp ${total.toLocaleString('id-ID')})`,
         status: 'APPROVED'
@@ -210,25 +211,12 @@ export const PosView: React.FC<PosViewProps> = ({
     };
 
     onAddPettyCash(newRecord);
-
-    if (pettyCashType === 'OUT') {
-      onAddAuditLog({
-        id: `AUD-${Date.now().toString().slice(-4)}`,
-        timestamp: new Date().toLocaleString('id-ID'),
-        actor: 'Budi Santoso (Kasir)',
-        action: 'PETTY_CASH_OUT',
-        details: `Pengeluaran uang laci sebesar Rp ${pettyAmount.toLocaleString('id-ID')} untuk: ${pettyReason}`,
-        status: 'APPROVED'
-      });
-    }
-
     setPettyAmount(0);
     setPettyReason('');
     setIsPettyCashOpen(false);
     refocusSearch();
   };
 
-  // Keyboard Shortcuts dengan Validasi Status Jalur Pembayaran
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -238,11 +226,11 @@ export const PosView: React.FC<PosViewProps> = ({
         setIsShiftCloseOpen(false);
         setIsPettyCashOpen(false);
         setIsReturnMode(false);
+        setCompletedReceipt(null);
         refocusSearch();
         return;
       }
 
-      // F1: Pembayaran Tunai
       if (e.key === 'F1') {
         e.preventDefault();
         if (!paymentConfig.cashEnabled) {
@@ -257,7 +245,6 @@ export const PosView: React.FC<PosViewProps> = ({
         return;
       }
 
-      // F2: QRIS / Digital
       if (e.key === 'F2') {
         e.preventDefault();
         if (!paymentConfig.qrisEnabled && !paymentConfig.edcEnabled) {
@@ -315,22 +302,19 @@ export const PosView: React.FC<PosViewProps> = ({
         id: `AUD-${Date.now().toString().slice(-4)}`,
         timestamp: new Date().toLocaleString('id-ID'),
         actor: 'Budi Santoso (Kasir)',
+        module: 'POS_TERMINAL',
         action: 'EXCHANGE_REFUND',
         details: `Transaksi tukar barang diproses. Net Bayar: Rp ${total.toLocaleString('id-ID')}`,
         status: 'APPROVED'
       });
     }
 
-    onCompleteTransaction(cart, total, paymentType);
+    const receipt = onCompleteTransaction(cart, total, paymentType, cashReceived, change);
 
-    setPaymentSuccess(true);
-    setTimeout(() => {
-      setPaymentSuccess(false);
-      setIsPaymentOpen(false);
-      setCart([]);
-      setCashReceived(0);
-      refocusSearch();
-    }, 1200);
+    setIsPaymentOpen(false);
+    setCart([]);
+    setCashReceived(0);
+    setCompletedReceipt(receipt); // Munculkan dialog preview struk belanja
   };
 
   return (
@@ -516,7 +500,7 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       </div>
 
-      {/* Kolom Kanan: Ringkasan Tagihan & Tender (Dipengaruhi Config Pembayaran) */}
+      {/* Kolom Kanan: Ringkasan Tagihan & Tender */}
       <div className="w-[40%] bg-slate-50 flex flex-col shadow-2xl z-10">
         <div className="h-64 bg-indigo-600 flex flex-col items-center justify-center text-white p-6 text-center">
           <p className="text-indigo-200 font-medium text-lg uppercase tracking-wider mb-2">
@@ -531,7 +515,6 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
 
         <div className="flex-1 p-8 flex flex-col justify-end gap-3">
-          {/* Tombol Tunai */}
           <button 
             disabled={cart.length === 0 || !paymentConfig.cashEnabled}
             onClick={() => {
@@ -545,7 +528,6 @@ export const PosView: React.FC<PosViewProps> = ({
             {!paymentConfig.cashEnabled && <span className="text-xs bg-slate-500 px-2 py-0.5 rounded font-normal">OFF</span>}
           </button>
 
-          {/* Tombol QRIS */}
           <button 
             disabled={cart.length === 0 || total < 0 || !paymentConfig.qrisEnabled}
             onClick={() => {
@@ -559,7 +541,6 @@ export const PosView: React.FC<PosViewProps> = ({
             {!paymentConfig.qrisEnabled && <span className="text-xs bg-slate-500 px-2 py-0.5 rounded font-normal">GANGGUAN</span>}
           </button>
 
-          {/* Tombol EDC Kartu */}
           <button 
             disabled={cart.length === 0 || total < 0 || !paymentConfig.edcEnabled}
             onClick={() => {
@@ -575,7 +556,7 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       </div>
 
-      {/* MODAL 1: PEMBAYARAN */}
+      {/* MODAL PEMBAYARAN */}
       {isPaymentOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6">
@@ -592,51 +573,128 @@ export const PosView: React.FC<PosViewProps> = ({
               </button>
             </div>
 
-            {paymentSuccess ? (
-              <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
-                <CheckCircle2 className="w-16 h-16 text-emerald-500 animate-bounce" />
-                <h4 className="text-2xl font-bold text-slate-800">Transaksi Selesai & Tercatat!</h4>
-                <p className="text-sm text-slate-500">Struk dan riwayat keuangan diperbarui.</p>
+            <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-100">
+              <div className="flex justify-between text-sm text-slate-500">
+                <span>{total < 0 ? 'Total Refund ke Pelanggan:' : 'Total Tagihan:'}</span>
+                <span className="font-bold text-slate-800">
+                  {total < 0 ? `-Rp ${Math.abs(total).toLocaleString('id-ID')}` : `Rp ${total.toLocaleString('id-ID')}`}
+                </span>
               </div>
-            ) : (
-              <>
-                <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-100">
+              {total > 0 && paymentType === 'CASH' && (
+                <>
                   <div className="flex justify-between text-sm text-slate-500">
-                    <span>{total < 0 ? 'Total Refund ke Pelanggan:' : 'Total Tagihan:'}</span>
-                    <span className="font-bold text-slate-800">
-                      {total < 0 ? `-Rp ${Math.abs(total).toLocaleString('id-ID')}` : `Rp ${total.toLocaleString('id-ID')}`}
+                    <span>Uang Diterima:</span>
+                    <span className="font-bold text-indigo-600">Rp {cashReceived.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-lg font-bold border-t pt-2 text-slate-800">
+                    <span>Kembalian:</span>
+                    <span className={change > 0 ? 'text-emerald-600' : 'text-slate-800'}>
+                      Rp {change.toLocaleString('id-ID')}
                     </span>
                   </div>
-                  {total > 0 && paymentType === 'CASH' && (
-                    <>
-                      <div className="flex justify-between text-sm text-slate-500">
-                        <span>Uang Diterima:</span>
-                        <span className="font-bold text-indigo-600">Rp {cashReceived.toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex justify-between text-lg font-bold border-t pt-2 text-slate-800">
-                        <span>Kembalian:</span>
-                        <span className={change > 0 ? 'text-emerald-600' : 'text-slate-800'}>
-                          Rp {change.toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
+                </>
+              )}
+            </div>
 
-                <button
-                  onClick={handleFinishPayment}
-                  disabled={total > 0 && paymentType === 'CASH' && cashReceived < total}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-lg shadow-md transition-all"
-                >
-                  KONFIRMASI & SELESAIKAN STRUK
-                </button>
-              </>
-            )}
+            <button
+              onClick={handleFinishPayment}
+              disabled={total > 0 && paymentType === 'CASH' && cashReceived < total}
+              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-lg shadow-md transition-all"
+            >
+              KONFIRMASI & SELESAIKAN STRUK
+            </button>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: VOID WITH PIN */}
+      {/* MODAL DIALOG STRUK THERMAL BELANJA (RECEIPT MODAL) */}
+      {completedReceipt && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 font-mono text-slate-800">
+            <div className="text-center border-b pb-3 space-y-1">
+              <h3 className="font-black text-lg tracking-wider">TOKO SERBA 35.000</h3>
+              <p className="text-[11px] text-slate-500">Pusat Grosir & Retail Terjangkau</p>
+              <p className="text-[10px] text-slate-400">{completedReceipt.timestamp}</p>
+            </div>
+
+            <div className="text-xs space-y-1 border-b pb-2 text-slate-600">
+              <div className="flex justify-between">
+                <span>No. Resi:</span>
+                <span className="font-bold text-slate-800">{completedReceipt.receiptNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Kasir:</span>
+                <span>{completedReceipt.cashierName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Metode:</span>
+                <span className="font-bold">{completedReceipt.paymentMethod}</span>
+              </div>
+            </div>
+
+            {/* List Barang Snapshot */}
+            <div className="max-h-48 overflow-y-auto space-y-2 text-xs py-1 border-b">
+              {completedReceipt.items.map((item, idx) => (
+                <div key={idx} className="flex justify-between items-start">
+                  <div>
+                    <span className="font-bold block">{item.name}</span>
+                    <span className="text-[10px] text-slate-400">
+                      {item.qty} x Rp {item.price.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                  <span className={`font-bold ${item.subtotal < 0 ? 'text-amber-600' : ''}`}>
+                    {item.subtotal < 0 ? '-' : ''}Rp {Math.abs(item.subtotal).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Rekap Total & Kembalian */}
+            <div className="space-y-1 text-xs border-b pb-2">
+              <div className="flex justify-between font-bold text-sm">
+                <span>Total:</span>
+                <span>Rp {completedReceipt.grossAmount.toLocaleString('id-ID')}</span>
+              </div>
+              {completedReceipt.paymentMethod === 'CASH' && (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Bayar Tunai:</span>
+                    <span>Rp {(completedReceipt.cashReceived || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-600 font-bold">
+                    <span>Kembalian:</span>
+                    <span>Rp {(completedReceipt.change || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <p className="text-center text-[10px] text-slate-400">
+              Terima kasih telah berbelanja!<br />Barang yang telah dibeli dapat ditukar dalam 1x24 jam.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                onClick={() => window.print()}
+                className="py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow"
+              >
+                <Printer className="w-3.5 h-3.5" /> Cetak Struk
+              </button>
+              <button
+                onClick={() => {
+                  setCompletedReceipt(null);
+                  refocusSearch();
+                }}
+                className="py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow"
+              >
+                Selesai (Esc)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL VOID PIN */}
       {isVoidModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
@@ -684,7 +742,7 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 3: PETTY CASH */}
+      {/* MODAL PETTY CASH */}
       {isPettyCashOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -761,7 +819,7 @@ export const PosView: React.FC<PosViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 4: CLOSING SHIFT */}
+      {/* MODAL CLOSING SHIFT */}
       {isShiftCloseOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">

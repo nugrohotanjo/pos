@@ -6,7 +6,8 @@ import {
   Users, 
   MonitorPlay, 
   ArrowLeftRight,
-  Settings
+  Settings,
+  ShieldCheck
 } from 'lucide-react';
 import type { ActiveMenu } from '../../types';
 
@@ -58,6 +59,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeMenu, setActiveMenu }) =
           }`}
         >
           <Receipt className="w-5 h-5" /> Laporan Penjualan
+        </button>
+
+        <button 
+          onClick={() => setActiveMenu('audit-trail')} 
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            activeMenu === 'audit-trail' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-5 h-5" /> Audit Trail Global
         </button>
 
         <button 

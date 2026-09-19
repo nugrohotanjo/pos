@@ -4,6 +4,7 @@ export type Product = {
   category: string;
   stock: number;
   price?: number;
+  isActive?: boolean; // Soft delete flag
 };
 
 export type CartItem = Product & {
@@ -39,6 +40,15 @@ export type PaymentConfig = {
   edcEnabled: boolean;
 };
 
+export type TransactionItemSnapshot = {
+  barcode: string;
+  name: string;
+  price: number;
+  qty: number;
+  subtotal: number;
+  isReturn?: boolean;
+};
+
 export type TransactionRecord = {
   id: string;
   receiptNumber: string;
@@ -49,34 +59,72 @@ export type TransactionRecord = {
   mdrRate: number;
   mdrFee: number;
   netSettlement: number;
+  cashReceived?: number;
+  change?: number;
   paymentMethod: PaymentMethod;
   itemsSummary: string;
+  items: TransactionItemSnapshot[];
 };
 
+export type AuditModule = 
+  | 'PRODUCTS' 
+  | 'INVENTORY' 
+  | 'POS_TERMINAL' 
+  | 'PETTY_CASH' 
+  | 'USERS_ROLES' 
+  | 'SETTINGS';
+
 export type AuditActionType = 
+  | 'CREATE_PRODUCT'
+  | 'ARCHIVE_PRODUCT'
+  | 'RESTORE_PRODUCT'
+  | 'STOCK_MUTATION'
+  | 'SALE_COMPLETED'
   | 'VOID_ORDER' 
   | 'EXCHANGE_REFUND' 
-  | 'STOCK_OVERRIDE' 
+  | 'PETTY_CASH_IN'
   | 'PETTY_CASH_OUT' 
   | 'SHIFT_CLOSE'
-  | 'PAYMENT_CONFIG_UPDATE';
+  | 'CREATE_EMPLOYEE'
+  | 'TOGGLE_EMPLOYEE'
+  | 'CREATE_ROLE'
+  | 'UPDATE_PERMISSIONS'
+  | 'UPDATE_PAYMENT_CONFIG';
 
 export type AuditLog = {
   id: string;
   timestamp: string;
   actor: string;
+  module: AuditModule;
   action: AuditActionType;
   details: string;
-  status: 'APPROVED' | 'REJECTED';
+  status: 'APPROVED' | 'AUTO_RECORDED' | 'REJECTED';
 };
 
-export type EmployeeRole = 'OWNER' | 'SUPERVISOR' | 'CASHIER';
+export type AppPermission = 
+  | 'access_pos'
+  | 'void_transaction'
+  | 'exchange_items'
+  | 'manage_petty_cash'
+  | 'view_reports'
+  | 'view_audit_trail'
+  | 'manage_stock'
+  | 'manage_products'
+  | 'manage_employees'
+  | 'manage_settings';
+
+export type CustomRole = {
+  id: string;
+  name: string;
+  description: string;
+  permissions: AppPermission[];
+};
 
 export type Employee = {
   id: string;
   name: string;
   username: string;
-  role: EmployeeRole;
+  roleId: string;
   pin: string;
   isActive: boolean;
 };
@@ -90,4 +138,12 @@ export type PettyCashEntry = {
   cashierName: string;
 };
 
-export type ActiveMenu = 'dashboard' | 'products' | 'stock-ledger' | 'reports' | 'users' | 'settings' | 'pos';
+export type ActiveMenu = 
+  | 'dashboard' 
+  | 'products' 
+  | 'stock-ledger' 
+  | 'reports' 
+  | 'audit-trail' 
+  | 'users' 
+  | 'settings' 
+  | 'pos';
