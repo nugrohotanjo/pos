@@ -1,5 +1,13 @@
 import React from 'react';
-import { LayoutDashboard, Package, Receipt, Users, MonitorPlay } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  Receipt, 
+  Users, 
+  MonitorPlay, 
+  ArrowLeftRight,
+  Settings
+} from 'lucide-react';
 import type { ActiveMenu } from '../../types';
 
 interface SidebarProps {
@@ -34,12 +42,40 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeMenu, setActiveMenu }) =
           <Package className="w-5 h-5" /> Data Barang & Stok
         </button>
 
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors hover:bg-slate-800 text-slate-400">
+        <button 
+          onClick={() => setActiveMenu('stock-ledger')} 
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            activeMenu === 'stock-ledger' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+          }`}
+        >
+          <ArrowLeftRight className="w-5 h-5" /> Kartu Stok & Audit
+        </button>
+
+        <button 
+          onClick={() => setActiveMenu('reports')} 
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            activeMenu === 'reports' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+          }`}
+        >
           <Receipt className="w-5 h-5" /> Laporan Penjualan
         </button>
 
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors hover:bg-slate-800 text-slate-400">
+        <button 
+          onClick={() => setActiveMenu('users')} 
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            activeMenu === 'users' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+          }`}
+        >
           <Users className="w-5 h-5" /> Data Karyawan
+        </button>
+
+        <button 
+          onClick={() => setActiveMenu('settings')} 
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            activeMenu === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+          }`}
+        >
+          <Settings className="w-5 h-5" /> Pengaturan Toko
         </button>
 
         <hr className="border-slate-800 my-4" />
