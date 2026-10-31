@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { Product, ProductAuditHistory } from '../types';
+import type { Product } from '../types';
 import { 
-  getProductsFromApi, 
+  getProductsServerSide, 
+  getCategoriesFromApi,
   createProductToApi, 
   updateProductToApi, 
   toggleArchiveProductToApi 
@@ -9,28 +10,27 @@ import {
 
 interface ProductState {
   products: Product[];
+  categories: string[];
   isLoading: boolean;
   backendError: string | null;
 
+  // Metadata Server Pagination
+  page: number;
+  limit: number;
+  totalItems: number;
+  totalPages: number;
+  search: string;
+  categoryFilter: string;
+  statusFilter: string;
+
   // Actions
   fetchProducts: () => Promise<void>;
-  addProduct: (
-    newProduct: Product, 
-    actorName: string, 
-    onAudit?: (details: string) => void
-  ) => Promise<void>;
+  fetchCategories: () => Promise<void>;
+  setFilter: (key: 'page' | 'limit' | 'search' | 'categoryFilter' | 'statusFilter', value: any) => void;
+  addProduct: (newProduct: Product, actorName: string, onAudit?: (details: string) => void) => Promise<void>;
   updateProduct: (
     barcode: string,
-    updatedFields: { 
-      name: string; 
-      category: string; 
-      stock: number; 
-      price: number; 
-      costPrice: number;
-      unit?: string;
-      minStock?: number;
-      shelfLocation?: string;
-    },
+    updatedFields: any,
     reason: string,
     actorName: string,
     onAudit?: (details: string) => void
@@ -44,109 +44,95 @@ interface ProductState {
 
 export const useProductStore = create<ProductState>((set, get) => ({
   products: [],
-  isLoading: true,
+  categories: [],
+  isLoading: false,
   backendError: null,
 
-  fetchProducts: async () => {
-    set({ isLoading: true, backendError: null });
+  page: 1,
+  limit: 10,
+  totalItems: 0,
+  totalPages: 1,
+  search: '',
+  categoryFilter: 'ALL',
+  statusFilter: 'ACTIVE',
+
+  setFilter: (key, value) => {
+    set((state) => ({
+      ...state,
+      [key]: value,
+      ...(key !== 'page' ? { page: 1 } : {})
+    }));
+    get().fetchProducts();
+  },
+
+  fetchCategories: async () => {
     try {
-      const data = await getProductsFromApi();
-      set({ products: data, isLoading: false });
+      const cats = await getCategoriesFromApi();
+      set({ categories: cats });
+    } catch (e) {
+      console.error(e);
+    }
+  },
+
+  fetchProducts: async () => {
+    const { page, limit, search, categoryFilter, statusFilter } = get();
+    set({ isLoading: true, backendError: null });
+
+    try {
+      const res = await getProductsServerSide({
+        page,
+        limit,
+        search,
+        category: categoryFilter,
+        status: statusFilter
+      });
+
+      set({
+        products: res.data || [],
+        totalItems: res.pagination.total_items,
+        totalPages: res.pagination.total_pages,
+        isLoading: false
+      });
     } catch (err: any) {
-      console.error('Gagal fetch produk:', err);
-      set({ 
-        backendError: 'Gagal terhubung ke server backend (http://localhost:8000). Pastikan server Go & Database PostgreSQL sedang berjalan.',
-        products: [],
-        isLoading: false 
+      set({
+        backendError: err.message || 'Gagal memuat produk dari server',
+        isLoading: false,
+        products: []
       });
     }
   },
 
   addProduct: async (newProduct, actorName, onAudit) => {
-    // 1. Simpan ke database via backend Go
     await createProductToApi(newProduct);
-
-    // 2. Update state lokal di store
-    set((state) => ({
-      products: [{ ...newProduct, isActive: true, history: [] }, ...state.products]
-    }));
-
     if (onAudit) {
       onAudit(`Menambahkan barang baru: "${newProduct.name}" (${newProduct.barcode})`);
     }
+    await get().fetchProducts();
+    await get().fetchCategories();
   },
 
   updateProduct: async (barcode, updatedFields, reason, actorName, onAudit) => {
-    const target = get().products.find((p) => p.barcode === barcode);
-    if (!target) return;
-
-    // 1. Kirim update ke backend Go
     await updateProductToApi(barcode, updatedFields);
-
-    // 2. Susun entri audit histori lokal
-    const timestamp = new Date().toLocaleString('id-ID');
-    const historyEntry: ProductAuditHistory = {
-      id: `HIST-${Date.now().toString().slice(-4)}`,
-      timestamp,
-      updatedBy: actorName,
-      oldValues: {
-        name: target.name,
-        category: target.category,
-        stock: target.stock,
-        price: target.price,
-        costPrice: target.costPrice,
-        unit: target.unit,
-        minStock: target.minStock,
-        shelfLocation: target.shelfLocation,
-      },
-      newValues: {
-        ...updatedFields,
-      },
-      reason,
-    };
-
-    // 3. Update state di store
-    set((state) => ({
-      products: state.products.map((p) => {
-        if (p.barcode === barcode) {
-          return {
-            ...p,
-            ...updatedFields,
-            history: [historyEntry, ...(p.history || [])],
-          };
-        }
-        return p;
-      }),
-    }));
-
     if (onAudit) {
-      onAudit(`Koreksi data barang "${target.name}" (${barcode}): Alasan - ${reason}`);
+      onAudit(`Koreksi data barang (${barcode}): Alasan - ${reason}`);
     }
+    await get().fetchProducts();
+    await get().fetchCategories();
   },
 
   toggleArchiveProduct: async (barcode, onAudit) => {
-    const target = get().products.find((p) => p.barcode === barcode);
-    if (!target) return;
-    const currentlyActive = target.isActive !== false;
+    const target = get().products.find(p => p.barcode === barcode);
+    const currentlyActive = target ? target.isActive !== false : true;
 
-    // 1. Kirim patch toggle status ke backend
     await toggleArchiveProductToApi(barcode);
-
-    // 2. Update status aktif di store
-    set((state) => ({
-      products: state.products.map((p) =>
-        p.barcode === barcode ? { ...p, isActive: !currentlyActive } : p
-      ),
-    }));
-
     if (onAudit) {
       const action = currentlyActive ? 'ARCHIVE_PRODUCT' : 'RESTORE_PRODUCT';
-      const text = `${currentlyActive ? 'Mengarsipkan' : 'Memulihkan'} barang: "${target.name}" (${barcode})`;
-      onAudit(action, text);
+      onAudit(action, `${currentlyActive ? 'Mengarsipkan' : 'Memulihkan'} barang (${barcode})`);
     }
+    await get().fetchProducts();
   },
 
-  adjustStockLocal: (barcode, newStock) => {
+  adjustStockLocal: (barcode: string, newStock: number) => {
     set((state) => ({
       products: state.products.map((p) =>
         p.barcode === barcode ? { ...p, stock: newStock } : p

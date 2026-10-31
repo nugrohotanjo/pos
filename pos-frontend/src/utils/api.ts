@@ -1,97 +1,80 @@
-import type { Product } from '../types';
-
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-export async function getProductsFromApi(): Promise<Product[]> {
-  const res = await fetch(`${API_BASE_URL}/products`);
-  if (!res.ok) throw new Error('Gagal mengambil data produk dari server');
-  const result = await res.json();
-  
-  return (result.data || []).map((item: any) => ({
-    barcode: item.barcode,
-    name: item.name,
-    category: item.category,
-    stock: item.stock || 0,
-    price: item.price || 0,
-    costPrice: item.cost_price || 0,
-    minStock: item.min_stock || 5,
-    unit: item.unit || 'Pcs',
-    shelfLocation: item.shelf_location || '',
-    isActive: item.is_active !== undefined ? item.is_active : true,
-    history: []
-  }));
+export interface PaginationParams {
+  page: number;
+  limit: number;
+  search?: string;
+  category?: string;
+  status?: string;
 }
 
-export async function createProductToApi(product: Product): Promise<void> {
+export interface PaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total_items: number;
+    total_pages: number;
+  };
+}
+
+export async function getProductsServerSide(params: PaginationParams): Promise<PaginatedResponse<any>> {
+  const query = new URLSearchParams({
+    page: params.page.toString(),
+    limit: params.limit.toString(),
+    search: params.search || '',
+    category: params.category || 'ALL',
+    status: params.status || 'ACTIVE'
+  });
+
+  const res = await fetch(`${API_BASE_URL}/products?${query.toString()}`);
+  if (!res.ok) throw new Error('Gagal mengambil data produk dari server');
+  return res.json();
+}
+
+export async function getCategoriesFromApi(): Promise<string[]> {
+  const res = await fetch(`${API_BASE_URL}/categories`);
+  if (!res.ok) return [];
+  const result = await res.json();
+  return result.data || [];
+}
+
+export async function createProductToApi(product: any): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      barcode: product.barcode,
-      name: product.name,
-      category: product.category,
-      price: Number(product.price || 35000),
-      cost_price: Number(product.costPrice || 20000),
-      stock: Number(product.stock || 0),
-      min_stock: Number(product.minStock || 5),
-      unit: product.unit || 'Pcs',
-      shelf_location: product.shelfLocation || '',
-      original_price: Number(product.price || 35000),
-      tag: 'General Retail',
-      stock_note: product.shelfLocation ? `Lokasi: ${product.shelfLocation}` : 'Tersedia di rak'
-    }),
+    body: JSON.stringify(product),
   });
-
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Gagal menyimpan produk ke database');
+    const err = await res.json();
+    throw new Error(err.error || 'Gagal menyimpan produk');
   }
+  return res.json();
 }
 
-export async function updateProductToApi(
-  barcode: string,
-  data: { 
-    name: string; 
-    category: string; 
-    stock: number; 
-    price?: number; 
-    costPrice?: number;
-    unit?: string;
-    minStock?: number;
-    shelfLocation?: string;
-  }
-): Promise<void> {
+export async function updateProductToApi(barcode: string, fields: any): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/products/${barcode}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      barcode,
-      name: data.name,
-      category: data.category,
-      stock: Number(data.stock),
-      price: Number(data.price || 35000),
-      cost_price: Number(data.costPrice || 20000),
-      min_stock: Number(data.minStock || 5),
-      unit: data.unit || 'Pcs',
-      shelf_location: data.shelfLocation || ''
-    }),
+    body: JSON.stringify(fields),
   });
-
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Gagal memperbarui produk di database');
+    const err = await res.json();
+    throw new Error(err.error || 'Gagal mengupdate produk');
   }
+  return res.json();
 }
 
-export async function toggleArchiveProductToApi(barcode: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/products/${barcode}/toggle-archive`, {
+export async function toggleArchiveProductToApi(barcode: string): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/products/${barcode}/archive`, {
     method: 'PATCH',
   });
-
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Gagal mengubah status arsip produk');
+    const err = await res.json();
+    throw new Error(err.error || 'Gagal mengubah status arsip produk');
   }
+  return res.json();
 }
 
 export async function getProductAuditLogsFromApi(barcode: string): Promise<any[]> {
@@ -99,4 +82,10 @@ export async function getProductAuditLogsFromApi(barcode: string): Promise<any[]
   if (!res.ok) throw new Error('Gagal mengambil data riwayat audit produk');
   const result = await res.json();
   return result.data || [];
+}
+
+// Fallback compatibility
+export async function getProductsFromApi(): Promise<any[]> {
+  const res = await getProductsServerSide({ page: 1, limit: 100 });
+  return res.data || [];
 }
