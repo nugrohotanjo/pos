@@ -1,0 +1,62 @@
+services:
+  pos-dashboard:
+    build: ./pos-frontend
+    container_name: serba-35k-pos-dashboard
+    ports:
+      - "8001:80"
+    restart: always
+
+  pos-store:
+    build:
+      context: ./pos-store
+      dockerfile: Dockerfile.dev
+    container_name: serba-35k-pos-store
+    ports:
+      - "8002:80"
+    volumes:
+      - ./pos-store:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    restart: always
+
+  pos-backend:
+    build:
+      context: ./pos-backend
+      dockerfile: Dockerfile.dev
+    container_name: serba-35k-pos-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./pos-backend:/app
+    environment:
+      - DB_HOST=pos-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=pos_db
+    depends_on:
+      pos-db:
+        condition: service_healthy
+    restart: always
+
+  pos-db:
+    image: postgres:16-alpine
+    container_name: serba-35k-pos-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pos_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pos_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+volumes:
+  pgdata:

@@ -30,6 +30,8 @@ import { AuditTrailView } from './features/audit/AuditTrailView';
 import { LoginView } from './features/auth/LoginView';
 import type { Language } from './data/translations';
 import { ShieldAlert, MonitorPlay } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 const INITIAL_ROLES: CustomRole[] = [
   {
@@ -127,8 +129,29 @@ export default function App() {
   // Sesi Login (null = Belum Login / Tampilkan Layar Login)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<Employee | null>(INITIAL_EMPLOYEES[0]);
+const location = useLocation();
+  const navigate = useNavigate();
 
-  const [activeMenu, setActiveMenu] = useState<ActiveMenu>('dashboard');
+  const currentPath = location.pathname.replace(/^\//, '') || 'dashboard';
+
+  const [activeMenu, setActiveMenuState] = useState<ActiveMenu>(() => {
+    const validMenus: ActiveMenu[] = [
+      'dashboard', 'pos', 'products', 'stock-ledger', 
+      'reports', 'audit-trail', 'users', 'settings'
+    ];
+    return validMenus.includes(currentPath as ActiveMenu) ? (currentPath as ActiveMenu) : 'dashboard';
+  });
+
+  useEffect(() => {
+    const path = location.pathname.replace(/^\//, '') || 'dashboard';
+    setActiveMenuState(path as ActiveMenu);
+  }, [location.pathname]);
+
+  const setActiveMenu = (menu: ActiveMenu) => {
+    setActiveMenuState(menu);
+    navigate(menu === 'dashboard' ? '/' : `/${menu}`);
+  };
+
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
   const [lang, setLang] = useState<Language>('id');
