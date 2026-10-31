@@ -179,7 +179,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           if (existing) {
             existing.totalSold += item.qty;
-            existing.totalRevenue += item.subtotal;
+            existing.totalRevenue += (item.subtotal ?? (item.price * item.qty));
             existing.totalProfit += profit;
           } else {
             itemMap.set(item.barcode, {
@@ -187,7 +187,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               name: item.name,
               category: currentProd?.category || 'Umum',
               totalSold: item.qty,
-              totalRevenue: item.subtotal,
+              totalRevenue: (item.subtotal ?? (item.price * item.qty)),
               totalProfit: profit,
               currentStock: currentProd?.stock ?? 0,
             });

@@ -633,13 +633,13 @@ export const PosView: React.FC<PosViewProps> = ({
                 <div key={idx} className="space-y-0.5">
                   <div className="flex justify-between items-start font-bold">
                     <span>{item.name}</span>
-                    <span className={item.subtotal < 0 ? 'text-amber-600' : ''}>
-                      {item.subtotal < 0 ? '-' : ''}Rp {Math.abs(item.subtotal).toLocaleString('id-ID')}
+                    <span className={(item.subtotal ?? 0) < 0 ? 'text-amber-600' : ''}>
+                      {(item.subtotal ?? 0) < 0 ? '-' : ''}Rp {Math.abs(item.subtotal ?? 0).toLocaleString('id-ID')}
                     </span>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-400">
                     <span>{item.qty} x Rp {item.price.toLocaleString('id-ID')}</span>
-                    <span>DPP: Rp {item.dpp.toLocaleString('id-ID')} | PPN: Rp {item.taxAmount.toLocaleString('id-ID')}</span>
+                    <span>DPP: Rp {(item.dpp ?? 0).toLocaleString('id-ID')} | PPN: Rp {(item.taxAmount ?? 0).toLocaleString('id-ID')}</span>
                   </div>
                 </div>
               ))}
@@ -648,11 +648,11 @@ export const PosView: React.FC<PosViewProps> = ({
             <div className="space-y-1 text-xs border-b pb-2">
               <div className="flex justify-between text-slate-500">
                 <span>DPP:</span>
-                <span>Rp {completedReceipt.totalDpp.toLocaleString('id-ID')}</span>
+                <span>Rp {(completedReceipt.totalDpp ?? 0).toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>PPN 11%:</span>
-                <span>Rp {completedReceipt.totalTax.toLocaleString('id-ID')}</span>
+                <span>Rp {(completedReceipt.totalTax ?? 0).toLocaleString('id-ID')}</span>
               </div>
               <div className="flex justify-between font-bold text-sm border-t pt-1 text-slate-900">
                 <span>Total Belanja:</span>

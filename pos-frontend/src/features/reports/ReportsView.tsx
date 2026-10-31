@@ -138,16 +138,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         t.cashierName,
         t.itemsSummary,
         t.paymentMethod,
-        t.grossAmount,
-        t.totalDpp || 0,
-        t.totalTax || 0,
-        t.totalCogs || 0,
+        t.grossAmount ?? 0,
+        (t.totalDpp ?? 0),
+        (t.totalTax ?? 0),
+        (t.totalCogs ?? 0),
         t.grossProfit || 0,
         t.mdrFee,
         t.netSettlement
       ]);
 
-      exportToCsv(`laporan-penjualan-${dateStr}.csv`, [headers, ...dataRows]);
+      exportToCsv(`laporan-penjualan-${dateStr}.csv`, [headers, ...(dataRows as (string | number)[][])]);
     } else if (activeTab === 'petty') {
       const headers = ['ID Mutasi', 'Waktu', 'Kasir', 'Tipe', 'Nominal (Rp)', 'Keterangan'];
       const dataRows = filteredPetty.map(p => [
@@ -159,19 +159,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         p.reason
       ]);
 
-      exportToCsv(`laporan-kas-laci-${dateStr}.csv`, [headers, ...dataRows]);
+      exportToCsv(`laporan-kas-laci-${dateStr}.csv`, [headers, ...(dataRows as (string | number)[][])]);
     } else {
       const headers = ['ID Audit', 'Waktu', 'Aktor', 'Aksi', 'Rincian', 'Status'];
       const dataRows = filteredAudit.map(a => [
         a.id,
         a.timestamp,
-        a.actor,
+        a.actor ?? a.user ?? "",
         a.action,
         a.details,
         a.status
       ]);
 
-      exportToCsv(`log-otorisasi-${dateStr}.csv`, [headers, ...dataRows]);
+      exportToCsv(`log-otorisasi-${dateStr}.csv`, [headers, ...(dataRows as (string | number)[][])]);
     }
   };
 
@@ -348,7 +348,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         Rp {(tx.grossProfit || 0).toLocaleString('id-ID')}
                       </td>
                       <td className="py-3 px-6 text-right font-bold text-slate-900 font-mono">
-                        Rp {tx.netSettlement.toLocaleString('id-ID')}
+                        Rp {(tx.netSettlement ?? 0).toLocaleString('id-ID')}
                       </td>
                     </tr>
                   ))}

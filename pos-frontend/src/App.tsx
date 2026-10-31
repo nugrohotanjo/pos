@@ -29,9 +29,17 @@ import { SettingsView } from './features/settings/SettingsView';
 import { AuditTrailView } from './features/audit/AuditTrailView';
 import { LoginView } from './features/auth/LoginView';
 import type { Language } from './data/translations';
+import { 
+  getProductsFromApi, 
+  createProductToApi, 
+  updateProductToApi, 
+  toggleArchiveProductToApi 
+} from './utils/api';
 import { ShieldAlert, MonitorPlay } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
+
+
 
 const INITIAL_ROLES: CustomRole[] = [
   {
@@ -152,7 +160,40 @@ const location = useLocation();
     navigate(menu === 'dashboard' ? '/' : `/${menu}`);
   };
 
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  const loadProducts = async () => {
+    setIsLoadingProducts(true);
+    setBackendError(null);
+    try {
+      const data = await getProductsFromApi();
+      setProducts(data);
+    } catch (err: any) {
+      console.error("Gagal sinkronisasi produk dengan database:", err);
+      setBackendError("Gagal terhubung ke server backend (http://localhost:8000). Pastikan server Go & Database PostgreSQL sedang berjalan.");
+      setProducts([]); // Kosongkan agar tidak menampilkan data dummy palsu
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  // Ambil data produk langsung dari PostgreSQL
+  useEffect(() => {
+    getProductsFromApi()
+      .then((data) => {
+        if (data && data.length > 0) {
+          setProducts(data);
+        }
+      })
+      .catch((err) => console.error("Gagal sinkronisasi produk dengan database:", err));
+  }, []);
+
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
   const [lang, setLang] = useState<Language>('id');
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
@@ -196,7 +237,7 @@ const location = useLocation();
     const newLog: AuditLog = {
       id: `AUD-${Date.now().toString().slice(-4)}`,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      actor,
+      actor, user: actor,
       module,
       action,
       details,
@@ -227,74 +268,94 @@ const location = useLocation();
     setCurrentUser(null);
   };
 
-  const handleAddProduct = (newProduct: Product) => {
-    setProducts([{ ...newProduct, isActive: true, history: [] }, ...products]);
-    const initialBatch: StockBatch = {
-      id: `BATCH-${Date.now().toString().slice(-4)}`,
-      barcode: newProduct.barcode,
-      purchaseCost: newProduct.costPrice || 20000,
-      initialQty: newProduct.stock,
-      remainingQty: newProduct.stock,
-      receivedAt: new Date().toLocaleDateString('id-ID')
-    };
-    setStockBatches(prev => [...prev, initialBatch]);
-    pushAudit('PRODUCTS', 'CREATE_PRODUCT', `Menambahkan SKU baru "${newProduct.name}" (Barcode: ${newProduct.barcode})`);
+  const handleAddProduct = async (newProduct: Product) => {
+    try {
+      // 1. Simpan ke database PostgreSQL via backend Go
+      await createProductToApi(newProduct);
+
+      // 2. Perbarui state UI
+      setProducts(prev => [{ ...newProduct, isActive: true, history: [] }, ...prev]);
+      
+      const initialBatch: StockBatch = {
+        id: `BATCH-${Date.now().toString().slice(-4)}`,
+        barcode: newProduct.barcode,
+        purchaseCost: newProduct.costPrice || 20000,
+        initialQty: newProduct.stock,
+        remainingQty: newProduct.stock,
+        receivedAt: new Date().toLocaleDateString('id-ID')
+      };
+      setStockBatches(prev => [...prev, initialBatch]);
+      pushAudit('PRODUCTS', 'CREATE_PRODUCT', `Menambahkan SKU baru "${newProduct.name}" (Barcode: ${newProduct.barcode})`);
+    } catch (err: any) {
+      alert(`Gagal menyimpan produk: ${err.message}`);
+    }
   };
 
-  const handleUpdateProduct = (
-    barcode: string, 
-    updatedFields: { name: string; category: string; stock: number; price?: number; costPrice?: number }, 
+  const handleUpdateProduct = async (
+    barcode: string,
+    updatedFields: { name: string; category: string; stock: number; price?: number; costPrice?: number },
     reason: string
   ) => {
     const target = products.find(p => p.barcode === barcode);
     if (!target || !currentUser) return;
 
-    const timestamp = new Date().toLocaleString('id-ID');
-    const updatedBy = `${currentUser.name} (${currentUserRole?.name})`;
+    try {
+      // 1. Simpan perubahan ke PostgreSQL via backend Go
+      await updateProductToApi(barcode, updatedFields);
 
-    const historyEntry: ProductAuditHistory = {
-      id: `HIST-${Date.now().toString().slice(-4)}`,
-      timestamp,
-      updatedBy,
-      oldValues: {
-        name: target.name,
-        category: target.category,
-        stock: target.stock,
-        price: target.price || FIXED_PRICE,
-        costPrice: target.costPrice || 20000,
-      },
-      newValues: {
-        ...updatedFields,
-      },
-      reason,
-    };
+      // 2. Update state lokal & catat riwayat audit
+      const timestamp = new Date().toLocaleString('id-ID');
+      const updatedBy = `${currentUser.name} (${currentUserRole?.name})`;
 
-    setProducts(products.map(p => {
-      if (p.barcode === barcode) {
-        return {
-          ...p,
+      const historyEntry: ProductAuditHistory = {
+        id: `HIST-${Date.now().toString().slice(-4)}`,
+        timestamp,
+        updatedBy,
+        oldValues: {
+          name: target.name,
+          category: target.category,
+          stock: target.stock,
+          price: target.price || FIXED_PRICE,
+          costPrice: target.costPrice || 20000,
+        },
+        newValues: {
           ...updatedFields,
-          history: [historyEntry, ...(p.history || [])],
-        };
-      }
-      return p;
-    }));
+        },
+        reason,
+      };
 
-    pushAudit(
-      'PRODUCTS', 
-      'UPDATE_PRODUCT', 
-      `Mengubah data SKU "${target.name}" (${barcode}). Nama: "${updatedFields.name}", Stok: ${target.stock} ➔ ${updatedFields.stock}. Alasan: ${reason}`,
-      updatedBy,
-      'APPROVED'
-    );
+      setProducts(products.map(p => {
+        if (p.barcode === barcode) {
+          return {
+            ...p,
+            ...updatedFields,
+            history: [historyEntry, ...(p.history || [])]
+          };
+        }
+        return p;
+      }));
+
+      pushAudit('PRODUCTS', 'UPDATE_PRODUCT', `Koreksi data barang "${target.name}" (${barcode}): Alasan - ${reason}`);
+    } catch (err: any) {
+      alert(`Gagal memperbarui produk: ${err.message}`);
+    }
   };
 
-  const handleToggleArchiveProduct = (barcode: string) => {
+  const handleToggleArchiveProduct = async (barcode: string) => {
     const target = products.find(p => p.barcode === barcode);
     if (!target) return;
     const currentlyActive = target.isActive !== false;
-    setProducts(products.map(p => p.barcode === barcode ? { ...p, isActive: !currentlyActive } : p));
-    pushAudit('PRODUCTS', currentlyActive ? 'ARCHIVE_PRODUCT' : 'RESTORE_PRODUCT', `${currentlyActive ? 'Mengarsipkan' : 'Memulihkan'} barang: "${target.name}" (${barcode})`);
+
+    try {
+      // 1. Kirim patch toggle status ke backend Go
+      await toggleArchiveProductToApi(barcode);
+
+      // 2. Update state lokal
+      setProducts(products.map(p => p.barcode === barcode ? { ...p, isActive: !currentlyActive } : p));
+      pushAudit('PRODUCTS', currentlyActive ? 'ARCHIVE_PRODUCT' : 'RESTORE_PRODUCT', `${currentlyActive ? 'Mengarsipkan' : 'Memulihkan'} barang: "${target.name}" (${barcode})`);
+    } catch (err: any) {
+      alert(`Gagal mengubah status arsip produk: ${err.message}`);
+    }
   };
 
   const handleAddEmployee = (newEmp: Employee) => {
@@ -627,13 +688,42 @@ const location = useLocation();
           
           {activeMenu === 'products' && (
             hasPermission('manage_products') ? (
-              <ProductsView 
-                products={products} 
-                onAddProduct={handleAddProduct} 
-                onToggleArchiveProduct={handleToggleArchiveProduct}
-                onUpdateProduct={handleUpdateProduct}
-                canEdit={hasPermission('edit_products')}
-              />
+              backendError ? (
+                <div className="p-8 max-w-4xl mx-auto">
+                  <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-6 text-center shadow-sm">
+                    <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <ShieldAlert size={32} />
+                    </div>
+                    <h2 className="text-xl font-bold text-rose-900 mb-2">
+                      Koneksi Backend Terputus
+                    </h2>
+                    <p className="text-rose-700 text-sm max-w-lg mx-auto mb-6">
+                      {backendError}
+                    </p>
+                    <div className="flex justify-center gap-3">
+                      <button
+                        onClick={loadProducts}
+                        className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl transition cursor-pointer shadow-sm"
+                      >
+                        Coba Hubungkan Kembali
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : isLoadingProducts ? (
+                <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
+                  <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <p className="font-medium text-sm">Memuat data produk dari database...</p>
+                </div>
+              ) : (
+                <ProductsView
+                  products={products}
+                  onAddProduct={handleAddProduct}
+                  onToggleArchiveProduct={handleToggleArchiveProduct}
+                  onUpdateProduct={handleUpdateProduct}
+                  canEdit={hasPermission('edit_products')}
+                />
+              )
             ) : renderCashierWelcome()
           )}
           

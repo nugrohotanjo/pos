@@ -1,3 +1,4 @@
+// Product Audit History
 export type ProductAuditHistory = {
   id: string;
   timestamp: string;
@@ -8,42 +9,58 @@ export type ProductAuditHistory = {
     stock: number;
     price?: number;
     costPrice?: number;
+    unit?: string;
+    minStock?: number;
+    shelfLocation?: string;
   };
   newValues: {
-    name: string;
-    category: string;
-    stock: number;
+    name?: string;
+    category?: string;
+    stock?: number;
     price?: number;
     costPrice?: number;
+    unit?: string;
+    minStock?: number;
+    shelfLocation?: string;
   };
   reason: string;
 };
 
+// General Product Model
 export type Product = {
   barcode: string;
   name: string;
   category: string;
   stock: number;
-  price?: number;
-  costPrice?: number;
+  price: number;
+  costPrice: number;
+  minStock?: number;
+  unit?: string;
+  shelfLocation?: string;
   isActive?: boolean;
-  history?: ProductAuditHistory[]; // Catatan riwayat audit tiap produk
+  history?: ProductAuditHistory[];
 };
 
+// Cart Item di POS Terminal
 export type CartItem = Product & {
   qty: number;
   isReturn?: boolean;
+  subtotal?: number;
+  dpp?: number;
+  taxAmount?: number;
 };
 
+// Park / Hold Order
 export type HeldOrder = {
   id: string;
   time: string;
+  cashierName?: string;
   items: CartItem[];
+  totalQty?: number;
   totalAmount: number;
 };
 
-export type StockMovementType = 'IN' | 'OUT_DAMAGED' | 'OUT_LOST' | 'AUDIT_ADJUSTMENT' | 'CUSTOMER_RETURN';
-
+// FIFO Stock Batch
 export type StockBatch = {
   id: string;
   barcode: string;
@@ -53,78 +70,107 @@ export type StockBatch = {
   receivedAt: string;
 };
 
+// Transaction Item & Record
+export type TransactionItem = {
+  barcode: string;
+  name: string;
+  qty: number;
+  price: number;
+  cost?: number;
+  costPrice?: number;
+  subtotal?: number;
+  dpp?: number;
+  taxAmount?: number;
+  isReturn?: boolean;
+};
+
+export type TransactionRecord = {
+  id: string;
+  invoiceNumber?: string;
+  receiptNumber?: string;
+  timestamp: string;
+  cashierName: string;
+  items: TransactionItem[];
+  itemsSummary?: string;
+  totalItems?: number;
+  totalQty: number;
+  subtotal?: number;
+  taxPPN?: number;
+  totalTax: number;
+  totalDpp: number;
+  grandTotal?: number;
+  grossAmount: number;
+  paymentMethod: 'CASH' | 'QRIS' | 'EDC';
+  amountPaid?: number;
+  cashReceived?: number;
+  change?: number;
+  mdrRate?: number;
+  mdrFee: number;
+  netSettlement: number;
+  totalCOGS?: number;
+  totalCogs?: number;
+  grossProfit: number;
+};
+
+// Stock Movement & Ledger
+export type StockMovementType = 'IN' | 'OUT_SHRINKAGE' | 'OUT_DAMAGED' | 'OUT_LOST' | 'ADJUSTMENT';
+
 export type StockMovement = {
   id: string;
   timestamp: string;
   barcode: string;
   productName: string;
   type: StockMovementType;
+  qty?: number;
   quantity: number;
   purchaseCost?: number;
-  reason: string;
-  recordedBy: string;
+  costPerUnit?: number;
+  totalCost?: number;
+  reason?: string;
+  note?: string;
+  recordedBy?: string;
+  createdBy?: string;
 };
 
-export type PaymentMethod = 'CASH' | 'QRIS' | 'EDC';
-
-export type PaymentConfig = {
-  cashEnabled: boolean;
-  qrisEnabled: boolean;
-  edcEnabled: boolean;
-};
-
-export type TransactionItemSnapshot = {
-  barcode: string;
-  name: string;
-  price: number;
-  costPrice: number;
-  qty: number;
-  subtotal: number;
-  dpp: number;
-  taxAmount: number;
-  isReturn?: boolean;
-};
-
-export type TransactionRecord = {
+// Petty Cash Entry
+export type PettyCashEntry = {
   id: string;
-  receiptNumber: string;
   timestamp: string;
+  cashierName?: string;
+  type: 'IN' | 'OUT';
+  amount: number;
+  reason: string;
+};
+export type PettyCashRecord = PettyCashEntry;
+
+// Shift Close
+export type ShiftCloseRecord = {
+  id: string;
+  closedAt: string;
   cashierName: string;
-  totalQty: number;
-  grossAmount: number;
-  totalDpp: number;
-  totalTax: number;
-  totalCogs: number;
-  grossProfit: number;
-  mdrRate: number;
-  mdrFee: number;
-  netSettlement: number;
-  cashReceived?: number;
-  change?: number;
-  paymentMethod: PaymentMethod;
-  itemsSummary: string;
-  items: TransactionItemSnapshot[];
+  openingCash: number;
+  cashSales: number;
+  cashIn: number;
+  cashOut: number;
+  expectedCash: number;
+  countedCash: number;
+  difference: number;
+  status: 'EXACT' | 'OVER' | 'SHORT';
+  notes: string;
 };
 
-export type AuditModule = 
-  | 'PRODUCTS' 
-  | 'INVENTORY' 
-  | 'POS_TERMINAL' 
-  | 'PETTY_CASH' 
-  | 'USERS_ROLES' 
-  | 'SETTINGS';
-
-export type AuditActionType = 
+// Audit Trail Action & Modules
+export type AuditActionType =
   | 'CREATE_PRODUCT'
   | 'UPDATE_PRODUCT'
   | 'ARCHIVE_PRODUCT'
   | 'RESTORE_PRODUCT'
   | 'STOCK_MUTATION'
   | 'SALE_COMPLETED'
-  | 'VOID_ORDER' 
-  | 'EXCHANGE_REFUND' 
+  | 'VOID_ORDER'
+  | 'EXCHANGE_REFUND'
   | 'PETTY_CASH_IN'
-  | 'PETTY_CASH_OUT' 
+  | 'PETTY_CASH_OUT'
   | 'SHIFT_CLOSE'
   | 'CREATE_EMPLOYEE'
   | 'TOGGLE_EMPLOYEE'
@@ -133,20 +179,35 @@ export type AuditActionType =
   | 'UPDATE_PAYMENT_CONFIG'
   | 'UPDATE_STORE_SETTINGS';
 
+export type AuditModule =
+  | 'AUTH'
+  | 'POS'
+  | 'POS_TERMINAL'
+  | 'PRODUCTS'
+  | 'STOCK'
+  | 'INVENTORY'
+  | 'FINANCE'
+  | 'PETTY_CASH'
+  | 'USERS_ROLES'
+  | 'SETTINGS';
+
 export type AuditLog = {
   id: string;
   timestamp: string;
-  actor: string;
+  user?: string;
+  actor?: string;
+  role?: string;
   module: AuditModule;
   action: AuditActionType;
   details: string;
   status: 'APPROVED' | 'AUTO_RECORDED' | 'REJECTED';
 };
 
-export type AppPermission = 
+// Permissions & RBAC
+export type AppPermission =
   | 'access_dashboard'
   | 'manage_products'
-  | 'edit_products' // Permission edit nama, stok, harga barang
+  | 'edit_products'
   | 'manage_stock'
   | 'view_reports'
   | 'view_audit_trail'
@@ -162,32 +223,39 @@ export type CustomRole = {
   name: string;
   description: string;
   permissions: AppPermission[];
+  isSystem?: boolean;
 };
 
 export type Employee = {
   id: string;
-  name: string;
   username: string;
-  roleId: string;
+  name: string;
   pin: string;
+  roleId: string;
   isActive: boolean;
 };
 
-export type PettyCashEntry = {
-  id: string;
-  type: 'IN' | 'OUT';
-  amount: number;
-  reason: string;
-  timestamp: string;
-  cashierName: string;
+export type PaymentMethod = 'CASH' | 'QRIS' | 'EDC';
+
+// Payment Gateway Configuration
+export type PaymentConfig = {
+  cashEnabled: boolean;
+  qrisEnabled: boolean;
+  edcEnabled: boolean;
+  isActiveQris?: boolean;
+  isActiveEdc?: boolean;
+  qrisMdrPercent?: number;
+  edcMdrPercent?: number;
 };
 
-export type ActiveMenu = 
-  | 'dashboard' 
-  | 'products' 
-  | 'stock-ledger' 
-  | 'reports' 
-  | 'audit-trail' 
-  | 'users' 
-  | 'settings' 
-  | 'pos';
+export type ActiveMenu =
+  | 'dashboard'
+  | 'pos'
+  | 'products'
+  | 'stock-ledger'
+  | 'reports'
+  | 'audit-trail'
+  | 'users'
+  | 'settings';
+
+export type Language = 'id' | 'en';

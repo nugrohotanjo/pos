@@ -58,7 +58,7 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
     const matchDate = isDateInRange(log.timestamp);
     const query = searchQuery.toLowerCase();
     const matchSearch = 
-      log.actor.toLowerCase().includes(query) ||
+      ((log.actor || log.user || "").toLowerCase().includes(query)) ||
       log.details.toLowerCase().includes(query) ||
       log.action.toLowerCase().includes(query) ||
       log.id.toLowerCase().includes(query);
@@ -73,7 +73,7 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
     const dataRows = filteredLogs.map(l => [
       l.id,
       l.timestamp,
-      l.actor,
+      l.actor ?? l.user ?? "",
       l.module,
       l.action,
       l.details,
@@ -81,7 +81,7 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
     ]);
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    exportToCsv(`audit-trail-global-${dateStr}.csv`, [headers, ...dataRows]);
+    exportToCsv(`audit-trail-global-${dateStr}.csv`, [headers, ...(dataRows as (string | number)[][])]);
   };
 
   const getModuleBadge = (module: AuditModule) => {
@@ -248,7 +248,7 @@ export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
                     <span className="font-mono text-xs font-bold text-indigo-600 block">{log.id}</span>
                     <span className="text-xs text-slate-400 font-mono">{log.timestamp}</span>
                   </td>
-                  <td className="py-3.5 px-6 font-semibold text-slate-800">{log.actor}</td>
+                  <td className="py-3.5 px-6 font-semibold text-slate-800">{log.actor ?? log.user ?? ""}</td>
                   <td className="py-3.5 px-6">{getModuleBadge(log.module)}</td>
                   <td className="py-3.5 px-6 font-mono text-xs font-bold text-slate-700">{log.action}</td>
                   <td className="py-3.5 px-6 text-xs text-slate-600 leading-relaxed max-w-md">{log.details}</td>
