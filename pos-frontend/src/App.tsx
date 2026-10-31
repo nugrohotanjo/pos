@@ -45,6 +45,7 @@ import type { Language } from './data/translations';
 
 export default function App() {
   const [appName, setAppName] = useState('POS Ritel General');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<Employee | null>(INITIAL_EMPLOYEES[0]);
   const [lang, setLang] = useState<Language>('id');
@@ -71,16 +72,23 @@ export default function App() {
     navigate(menu === 'dashboard' ? '/' : `/${menu}`);
   };
 
-  // Ambil state dan dispatcher dari Zustand Store
+  const handleToggleSidebar = () => {
+    // Pada resolusi kecil buka drawer mobile, pada desktop toggle collapse
+    if (window.innerWidth < 768) {
+      setIsMobileSidebarOpen((prev) => !prev);
+    } else {
+      setIsSidebarCollapsed((prev) => !prev);
+    }
+  };
+
   const products = useProductStore((state) => state.products);
   const fetchProducts = useProductStore((state) => state.fetchProducts);
   const adjustStockLocal = useProductStore((state) => state.adjustStockLocal);
 
   useEffect(() => {
-    fetchProducts();
+    fetchProducts(); import("./utils/api").then(m => m.getSettingsFromApi().then(s => { setAppName(s.app_name); setPaymentConfig({ cashEnabled: s.cash_enabled, qrisEnabled: s.qris_enabled, edcEnabled: s.edc_enabled }); }));
   }, [fetchProducts]);
 
-  // State Operasional Toko
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
@@ -133,7 +141,6 @@ export default function App() {
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // Auth Handlers
   const handleLoginSuccess = (emp: Employee) => {
     setCurrentUser(emp);
     const role = roles.find((r) => r.id === emp.roleId);
@@ -153,7 +160,6 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // User & Settings Handlers
   const handleAddEmployee = (newEmp: Employee) => {
     setEmployees([...employees, newEmp]);
     const role = roles.find((r) => r.id === newEmp.roleId);
@@ -191,7 +197,6 @@ export default function App() {
     setAuditLogs((prev) => [log, ...prev]);
   };
 
-  // FIFO Deduct & Sales Execution
   const deductFifoStock = (barcode: string, qtyToDeduct: number, fallbackCost: number): number => {
     let remainingToDeduct = qtyToDeduct;
     let totalItemCost = 0;
@@ -289,7 +294,6 @@ export default function App() {
 
     setTransactions([newTx, ...transactions]);
 
-    // Update stok produk di Zustand Store
     cart.forEach((c) => {
       const p = products.find((prod) => prod.barcode === c.barcode);
       if (p) {
@@ -343,7 +347,6 @@ export default function App() {
     pushAudit('INVENTORY', 'STOCK_MUTATION', `Penyesuaian stok ${type === 'IN' ? '+' : '-'}${quantity} untuk "${targetProduct.name}" (${barcode}). Alasan: ${reason}`);
   };
 
-  // 1. Tampilan Login jika belum autentikasi
   if (!currentUser) {
     return (
       <LoginView
@@ -355,7 +358,6 @@ export default function App() {
     );
   }
 
-  // 2. Tampilan Layar Kasir (POS)
   const activeProductsForPos = products.filter((p) => p.isActive !== false);
 
   if (activeMenu === 'pos') {
@@ -373,7 +375,6 @@ export default function App() {
     );
   }
 
-  // 3. Layout Utama Dashboard
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       <Sidebar 
@@ -382,6 +383,7 @@ export default function App() {
         currentUser={currentUser}
         userRole={currentUserRole}
         onLogout={handleLogout}
+        isCollapsed={isSidebarCollapsed}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         appName={appName}
@@ -395,7 +397,7 @@ export default function App() {
           currentUser={currentUser}
           userRole={currentUserRole}
           onLogout={handleLogout}
-          onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+          onToggleSidebar={handleToggleSidebar}
         />
         
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -468,7 +470,7 @@ export default function App() {
           
           {activeMenu === 'audit-trail' && (
             hasPermission('view_audit_trail') ? (
-              <AuditTrailView logs={auditLogs} />
+              <AuditTrailView />
             ) : (
               <CashierWelcome 
                 currentUser={currentUser} 

@@ -89,3 +89,56 @@ export async function getProductsFromApi(): Promise<any[]> {
   const res = await getProductsServerSide({ page: 1, limit: 100 });
   return res.data || [];
 }
+
+export interface AuditLogPaginationParams {
+  page: number;
+  limit: number;
+  search?: string;
+  module?: string;
+}
+
+export async function getAuditLogsServerSide(params: AuditLogPaginationParams): Promise<PaginatedResponse<any>> {
+  const query = new URLSearchParams({
+    page: params.page.toString(),
+    limit: params.limit.toString(),
+    search: params.search || '',
+    module: params.module || 'ALL',
+  });
+
+  const res = await fetch(`${API_BASE_URL}/audit-logs?${query.toString()}`);
+  if (!res.ok) throw new Error('Gagal memuat log audit dari server');
+  return res.json();
+}
+
+export interface StoreSettings {
+  id: number;
+  app_name: string;
+  store_address: string;
+  store_phone: string;
+  receipt_footer: string;
+  cash_enabled: boolean;
+  qris_enabled: boolean;
+  edc_enabled: boolean;
+  updated_at?: string;
+}
+
+export async function getSettingsFromApi(): Promise<StoreSettings> {
+  const res = await fetch(`${API_BASE_URL}/settings`);
+  if (!res.ok) throw new Error('Gagal mengambil pengaturan toko');
+  const result = await res.json();
+  return result.data;
+}
+
+export async function updateSettingsToApi(data: Partial<StoreSettings> & { actor?: string }): Promise<StoreSettings> {
+  const res = await fetch(`${API_BASE_URL}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Gagal menyimpan pengaturan toko');
+  }
+  const result = await res.json();
+  return result.data;
+}

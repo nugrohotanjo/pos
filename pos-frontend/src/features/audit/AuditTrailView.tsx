@@ -1,278 +1,291 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getAuditLogsServerSide } from '../../utils/api';
 import { 
+  ShieldCheck, 
   Search, 
-  Filter, 
-  Download, 
-  Package, 
-  ShoppingCart, 
-  Coins, 
-  Users, 
-  Sliders, 
-  ArrowLeftRight 
+  User, 
+  Calendar, 
+  ChevronLeft, 
+  ChevronRight, 
+  RotateCw,
+  Tag,
+  Activity
 } from 'lucide-react';
-import type { AuditLog, AuditModule } from '../../types';
-import { Pagination } from '../../components/ui/Pagination';
-import { DateRangeFilter } from '../../components/ui/DateRangeFilter';
-import { exportToCsv } from '../../utils/exportCsv';
 
-interface AuditTrailViewProps {
-  logs: AuditLog[];
-}
+export const AuditTrailView: React.FC = () => {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export const AuditTrailView: React.FC<AuditTrailViewProps> = ({ logs }) => {
-  const [selectedModule, setSelectedModule] = useState<'ALL' | AuditModule>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'APPROVED' | 'AUTO_RECORDED' | 'REJECTED'>('ALL');
-
-  // Filter Tanggal
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  // Pagination state
+  // Filter & Pagination State
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [limit, setLimit] = useState(15);
+  const [moduleFilter, setModuleFilter] = useState('ALL');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const isDateInRange = (rawTimestamp: string) => {
-    if (!startDate && !endDate) return true;
-    let itemDateStr = '';
-    if (rawTimestamp.includes('-')) {
-      itemDateStr = rawTimestamp.split(' ')[0].replace(/\//g, '-');
-    } else if (rawTimestamp.includes('/')) {
-      const parts = rawTimestamp.split(' ')[0].split('/');
-      if (parts.length === 3) {
-        const day = parts[0].padStart(2, '0');
-        const month = parts[1].padStart(2, '0');
-        const year = parts[2];
-        itemDateStr = `${year}-${month}-${day}`;
-      }
+  // Debounce input pencarian
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Load data dari backend PostgreSQL
+  const loadAuditLogs = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await getAuditLogsServerSide({
+        page,
+        limit,
+        search,
+        module: moduleFilter,
+      });
+
+      setLogs(res.data || []);
+      setTotalItems(res.pagination.total_items);
+      setTotalPages(res.pagination.total_pages);
+    } catch (err: any) {
+      setError(err.message || 'Gagal terhubung ke database audit log.');
+    } finally {
+      setIsLoading(false);
     }
-    if (!itemDateStr) return true;
-    if (startDate && itemDateStr < startDate) return false;
-    if (endDate && itemDateStr > endDate) return false;
-    return true;
   };
 
-  const filteredLogs = logs.filter((log) => {
-    const matchModule = selectedModule === 'ALL' || log.module === selectedModule;
-    const matchStatus = selectedStatus === 'ALL' || log.status === selectedStatus;
-    const matchDate = isDateInRange(log.timestamp);
-    const query = searchQuery.toLowerCase();
-    const matchSearch = 
-      ((log.actor || log.user || "").toLowerCase().includes(query)) ||
-      log.details.toLowerCase().includes(query) ||
-      log.action.toLowerCase().includes(query) ||
-      log.id.toLowerCase().includes(query);
+  useEffect(() => {
+    loadAuditLogs();
+  }, [page, limit, moduleFilter, search]);
 
-    return matchModule && matchStatus && matchDate && matchSearch;
-  });
-
-  const paginatedLogs = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
-
-  const handleExportAudit = () => {
-    const headers = ['ID Log', 'Waktu', 'Pelaku / Aktor', 'Modul Sumber', 'Aksi', 'Rincian Perubahan', 'Status'];
-    const dataRows = filteredLogs.map(l => [
-      l.id,
-      l.timestamp,
-      l.actor ?? l.user ?? "",
-      l.module,
-      l.action,
-      l.details,
-      l.status
-    ]);
-
-    const dateStr = new Date().toISOString().slice(0, 10);
-    exportToCsv(`audit-trail-global-${dateStr}.csv`, [headers, ...(dataRows as (string | number)[][])]);
-  };
-
-  const getModuleBadge = (module: AuditModule) => {
-    switch (module) {
+  const getModuleBadge = (mod: string) => {
+    switch (mod) {
       case 'PRODUCTS':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <Package className="w-3 h-3" /> Master Produk
-          </span>
-        );
-      case 'INVENTORY':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <ArrowLeftRight className="w-3 h-3" /> Mutasi Stok
-          </span>
-        );
+        return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'POS_TERMINAL':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            <ShoppingCart className="w-3 h-3" /> Kasir POS
-          </span>
-        );
-      case 'PETTY_CASH':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            <Coins className="w-3 h-3" /> Kas Laci
-          </span>
-        );
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'INVENTORY':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'USERS_ROLES':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <Users className="w-3 h-3" /> Staf & Role
-          </span>
-        );
+        return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'SETTINGS':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            <Sliders className="w-3 h-3" /> Pengaturan
-          </span>
-        );
-    }
-  };
-
-  const getStatusBadge = (status: AuditLog['status']) => {
-    switch (status) {
-      case 'APPROVED':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">DISETUJUI</span>;
-      case 'AUTO_RECORDED':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">SISTEM</span>;
-      case 'REJECTED':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">DITOLAK</span>;
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+      default:
+        return 'bg-slate-50 text-slate-600 border-slate-200';
     }
   };
 
   return (
-    <div className="p-8 h-full flex flex-col space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-4">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Sub Header Card */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Sistem Audit Trail Global</h2>
-          <p className="text-xs text-slate-500 mt-1">Rekaman jejak aktivitas seluruh aksi, perubahan stok, manipulasi laci, dan konfigurasi toko</p>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <ShieldCheck size={22} />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Audit Trail & Riwayat Sistem</h2>
+          </div>
+          <p className="text-sm text-slate-500 mt-1 pl-10">
+            Merekam seluruh aktivitas pengguna di database secara transparan (Create, Update, Delete, Stock Mutation, Kasir). Total {totalItems.toLocaleString('id-ID')} aktivitas.
+          </p>
         </div>
+
         <button
-          onClick={handleExportAudit}
-          className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm transition-colors"
+          onClick={loadAuditLogs}
+          className="flex items-center gap-2 px-4 py-2 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer self-start md:self-auto"
         >
-          <Download className="w-4 h-4" /> Ekspor Log CSV
+          <RotateCw size={14} className={isLoading ? 'animate-spin' : ''} />
+          <span>Segarkan Log</span>
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
-        {/* Filter Bar */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Cari aktor, id, aksi..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
-              <select
-                value={selectedModule}
-                onChange={(e) => {
-                  setSelectedModule(e.target.value as any);
-                  setPage(1);
-                }}
-                className="px-2.5 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="ALL">Semua Modul</option>
-                <option value="PRODUCTS">Master Produk</option>
-                <option value="INVENTORY">Mutasi Stok</option>
-                <option value="POS_TERMINAL">Terminal Kasir</option>
-                <option value="PETTY_CASH">Kas Laci</option>
-                <option value="USERS_ROLES">Karyawan & Hak Akses</option>
-                <option value="SETTINGS">Pengaturan</option>
-              </select>
-            </div>
-
-            <select
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value as any);
-                setPage(1);
-              }}
-              className="px-2.5 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="APPROVED">Disetujui</option>
-              <option value="AUTO_RECORDED">Sistem Otomatis</option>
-              <option value="REJECTED">Ditolak</option>
-            </select>
-
-            {/* Filter Date Range */}
-            <DateRangeFilter
-              startDate={startDate}
-              endDate={endDate}
-              onStartDateChange={(d) => {
-                setStartDate(d);
-                setPage(1);
-              }}
-              onEndDateChange={(d) => {
-                setEndDate(d);
-                setPage(1);
-              }}
-              onReset={() => {
-                setStartDate('');
-                setEndDate('');
-                setPage(1);
-              }}
-            />
-          </div>
-
-          <div className="text-xs font-semibold text-slate-500">
-            Total {filteredLogs.length} Log
-          </div>
+      {/* Toolbar Filter */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs items-center">
+        <div className="lg:col-span-6 relative">
+          <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
+          <input
+            type="text"
+            placeholder="Cari aktor, nomor barcode, atau keterangan aktivitas..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+          />
         </div>
 
-        {/* Tabel Log */}
-        <div className="overflow-y-auto flex-1">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-white text-slate-400 sticky top-0 border-b border-slate-200 text-xs uppercase font-semibold">
+        <div className="lg:col-span-3">
+          <select
+            value={moduleFilter}
+            onChange={(e) => {
+              setModuleFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-slate-700 font-medium"
+          >
+            <option value="ALL">Semua Modul</option>
+            <option value="PRODUCTS">Master Barang (PRODUCTS)</option>
+            <option value="POS_TERMINAL">Transaksi Kasir (POS_TERMINAL)</option>
+            <option value="INVENTORY">Kartu Stok (INVENTORY)</option>
+            <option value="USERS_ROLES">Karyawan & Hak Akses (USERS_ROLES)</option>
+            <option value="SETTINGS">Pengaturan Toko (SETTINGS)</option>
+          </select>
+        </div>
+
+        <div className="lg:col-span-3 flex items-center justify-end gap-2 text-xs text-slate-500">
+          <span className="shrink-0 font-medium">Tampil:</span>
+          <select
+            value={limit}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(1);
+            }}
+            className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer"
+          >
+            <option value={10}>10 Baris</option>
+            <option value={15}>15 Baris</option>
+            <option value={25}>25 Baris</option>
+            <option value={50}>50 Baris</option>
+            <option value={100}>100 Baris</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tabel Server-Side Audit Logs */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs relative">
+        {isLoading && (
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-xs flex items-center justify-center z-10">
+            <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        )}
+
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[950px] text-left text-sm text-slate-600">
+            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 text-xs tracking-wider uppercase">
               <tr>
-                <th className="py-3 px-6">ID & Waktu</th>
-                <th className="py-3 px-6">Pelaku / Aktor</th>
-                <th className="py-3 px-6">Sumber Modul</th>
-                <th className="py-3 px-6">Aksi Dilakukan</th>
-                <th className="py-3 px-6">Rincian Perubahan</th>
-                <th className="py-3 px-6 text-center">Status</th>
+                <th className="py-4 px-5 w-44">Waktu Eksekusi</th>
+                <th className="py-4 px-5 w-48">Petugas / Aktor</th>
+                <th className="py-4 px-5 w-36">Modul</th>
+                <th className="py-4 px-5 w-44">Jenis Aksi</th>
+                <th className="py-4 px-5">Rincian Perubahan / Aktivitas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginatedLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-3.5 px-6">
-                    <span className="font-mono text-xs font-bold text-indigo-600 block">{log.id}</span>
-                    <span className="text-xs text-slate-400 font-mono">{log.timestamp}</span>
-                  </td>
-                  <td className="py-3.5 px-6 font-semibold text-slate-800">{log.actor ?? log.user ?? ""}</td>
-                  <td className="py-3.5 px-6">{getModuleBadge(log.module)}</td>
-                  <td className="py-3.5 px-6 font-mono text-xs font-bold text-slate-700">{log.action}</td>
-                  <td className="py-3.5 px-6 text-xs text-slate-600 leading-relaxed max-w-md">{log.details}</td>
-                  <td className="py-3.5 px-6 text-center">{getStatusBadge(log.status)}</td>
-                </tr>
-              ))}
-              {paginatedLogs.length === 0 && (
+              {error ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-400">
-                    Tidak ada catatan riwayat audit pada rentang tanggal ini.
+                  <td colSpan={5} className="py-12 text-center text-rose-500 font-medium">
+                    {error}
                   </td>
                 </tr>
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-400">
+                    <p className="font-medium">Tidak ada rekaman audit log yang sesuai.</p>
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/70 transition">
+                    <td className="py-4 px-5 text-xs text-slate-500 font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={13} className="text-slate-400 shrink-0" />
+                        <span>{log.timestamp || log.created_at || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 font-medium text-slate-800 text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                          <User size={13} />
+                        </div>
+                        <span className="truncate max-w-[150px] font-semibold">
+                          {log.user || log.user_name || 'Sistem'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold border ${getModuleBadge(log.module)}`}>
+                        <Tag size={11} />
+                        {log.module}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 text-xs font-mono font-bold text-slate-700">
+                      <div className="flex items-center gap-1.5">
+                        <Activity size={13} className="text-indigo-500 shrink-0" />
+                        <span>{log.action}</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 text-xs text-slate-700 leading-relaxed font-normal">
+                      {log.details}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        <Pagination
-          currentPage={page}
-          pageSize={pageSize}
-          totalItems={filteredLogs.length}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
+        {/* Footer Pagination Server-Side */}
+        <div className="px-6 py-4 bg-slate-50/70 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <div>
+            Menampilkan{' '}
+            <span className="font-bold text-slate-800">
+              {totalItems === 0 ? 0 : (page - 1) * limit + 1}
+            </span>{' '}
+            -{' '}
+            <span className="font-bold text-slate-800">
+              {Math.min(page * limit, totalItems)}
+            </span>{' '}
+            dari <span className="font-bold text-slate-800">{totalItems.toLocaleString('id-ID')}</span> rekaman audit
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+              disabled={page === 1}
+              className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Halaman Sebelumnya"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((pageNum) => {
+                  if (totalPages <= 7) return true;
+                  return pageNum === 1 || pageNum === totalPages || Math.abs(pageNum - page) <= 1;
+                })
+                .map((pageNum, index, array) => {
+                  const showEllipsis = index > 0 && pageNum - array[index - 1] > 1;
+                  return (
+                    <React.Fragment key={pageNum}>
+                      {showEllipsis && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setPage(pageNum)}
+                        className={`min-w-8 h-8 px-2 rounded-xl font-bold transition text-xs cursor-pointer ${
+                          page === pageNum
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={page === totalPages}
+              className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Halaman Berikutnya"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

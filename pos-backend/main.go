@@ -11,12 +11,10 @@ import (
 )
 
 func main() {
-	// 1. Inisialisasi Database
 	config.ConnectDatabase()
 
 	r := gin.Default()
 
-	// 2. Middleware CORS Lengkap (Mencegah "Failed to fetch" di Browser)
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -31,10 +29,8 @@ func main() {
 		c.Next()
 	})
 
-	// 3. Health check & Dokumen
 	r.GET("/api/health", handlers.HealthCheck)
 
-	// 4. Group API V1
 	v1 := r.Group("/api/v1")
 	{
 		// Products & Categories
@@ -46,6 +42,13 @@ func main() {
 		v1.PATCH("/products/:barcode/toggle-archive", handlers.ToggleArchiveProduct)
 		v1.DELETE("/products/:barcode", handlers.DeleteProduct)
 		v1.GET("/products/:barcode/audit-logs", handlers.GetProductAuditLogs)
+
+		// Audit Logs
+		v1.GET("/audit-logs", handlers.GetAuditLogs)
+
+		// Settings Toko & Sistem
+		v1.GET("/settings", handlers.GetSettings)
+		v1.PUT("/settings", handlers.UpdateSettings)
 
 		// Orders / POS
 		v1.POST("/orders", handlers.CreateOrder)
