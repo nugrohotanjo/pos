@@ -31,6 +31,7 @@ func main() {
 	r.GET("/api/health", handlers.HealthCheck)
 
 	v1 := r.Group("/api/v1")
+		v1.GET("/products/:barcode/audit-logs", handlers.GetProductAuditLogs)
 	{
 		v1.GET("/products", handlers.GetProducts)
 		v1.POST("/products", handlers.CreateProduct)

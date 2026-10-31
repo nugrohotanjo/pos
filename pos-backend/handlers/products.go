@@ -232,3 +232,27 @@ func DeleteProduct(c *gin.Context) {
 		"message": "Produk berhasil dihapus dari database",
 	})
 }
+
+// GET /api/v1/products/:barcode/audit-logs
+func GetProductAuditLogs(c *gin.Context) {
+	barcode := c.Param("barcode")
+	var logs []models.AuditLog
+
+	// Cari semua log audit yang berkaitan dengan barcode ini di kolom Details
+	err := config.DB.Where("module = ? AND details LIKE ?", "PRODUCTS", "%"+barcode+"%").
+		Order("id desc").
+		Find(&logs).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Gagal memuat riwayat audit produk: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    logs,
+	})
+}

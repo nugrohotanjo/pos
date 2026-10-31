@@ -93,3 +93,10 @@ export async function toggleArchiveProductToApi(barcode: string): Promise<void> 
     throw new Error(errorData.error || 'Gagal mengubah status arsip produk');
   }
 }
+
+export async function getProductAuditLogsFromApi(barcode: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE_URL}/products/${barcode}/audit-logs`);
+  if (!res.ok) throw new Error('Gagal mengambil data riwayat audit produk');
+  const result = await res.json();
+  return result.data || [];
+}

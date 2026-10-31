@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Product, Employee, CustomRole } from '../../types';
 import { useProductStore } from '../../stores/useProductStore';
+import { getProductAuditLogsFromApi } from '../../utils/api';
 import { 
   Plus, 
   Search, 
@@ -17,7 +18,8 @@ import {
   ShieldAlert,
   User,
   Calendar,
-  FileText
+  FileText,
+  ArrowRight
 } from 'lucide-react';
 
 interface ProductsViewProps {
@@ -27,13 +29,65 @@ interface ProductsViewProps {
   onAuditLog?: (module: any, action: any, details: string) => void;
 }
 
+// Helper untuk mengekstrak perubahan Before -> After dari teks database
+function parseAuditDetails(details: string) {
+  const comparisons: { label: string; from: string; to: string }[] = [];
+  let reason = '';
+
+  // Ekstrak Alasan jika ada
+  const reasonMatch = details.match(/Alasan[:\s\-]+(.+?)(?:;|$)/i);
+  if (reasonMatch) {
+    reason = reasonMatch[1].trim();
+  }
+
+  // Ekstrak Perubahan Harga: Harga (RpA -> RpB)
+  const priceMatch = details.match(/Harga\s*\(([^)]+)\)/i);
+  if (priceMatch) {
+    const parts = priceMatch[1].split('->');
+    if (parts.length === 2) {
+      comparisons.push({
+        label: 'Harga Jual',
+        from: parts[0].trim(),
+        to: parts[1].trim()
+      });
+    }
+  }
+
+  // Ekstrak Perubahan Stok: Stok (A -> B Pcs)
+  const stockMatch = details.match(/Stok\s*\(([^)]+)\)/i);
+  if (stockMatch) {
+    const parts = stockMatch[1].split('->');
+    if (parts.length === 2) {
+      comparisons.push({
+        label: 'Stok Fisik',
+        from: parts[0].trim(),
+        to: parts[1].trim()
+      });
+    }
+  }
+
+  // Ekstrak HPP jika ada
+  const hppMatch = details.match(/HPP\s*\(([^)]+)\)/i);
+  if (hppMatch) {
+    const parts = hppMatch[1].split('->');
+    if (parts.length === 2) {
+      comparisons.push({
+        label: 'HPP Modal',
+        from: parts[0].trim(),
+        to: parts[1].trim()
+      });
+    }
+  }
+
+  return { comparisons, reason: reason || details };
+}
+
 export const ProductsView: React.FC<ProductsViewProps> = ({
   canEdit,
   currentUser,
   currentUserRole,
   onAuditLog
 }) => {
-  // Ambil state dan aksi langsung dari Zustand Store
   const products = useProductStore((state) => state.products);
   const isLoading = useProductStore((state) => state.isLoading);
   const backendError = useProductStore((state) => state.backendError);
@@ -49,9 +103,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  
+  // State Audit Modal dari Database
   const [auditProduct, setAuditProduct] = useState<Product | null>(null);
+  const [dbAuditLogs, setDbAuditLogs] = useState<any[]>([]);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
 
-  // Form Tambah Barang State
+  // Form Tambah State
   const [newBarcode, setNewBarcode] = useState('');
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('Umum');
@@ -106,6 +164,23 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setEditMinStock((p.minStock || 5).toString());
     setEditShelfLocation(p.shelfLocation || '');
     setEditReason('');
+  };
+
+  const handleOpenAuditModal = (p: Product) => {
+    setAuditProduct(p);
+    setIsLoadingAudit(true);
+    setDbAuditLogs([]);
+
+    getProductAuditLogsFromApi(p.barcode)
+      .then((logs) => {
+        setDbAuditLogs(logs);
+      })
+      .catch((err) => {
+        console.error('Gagal mengambil audit logs:', err);
+      })
+      .finally(() => {
+        setIsLoadingAudit(false);
+      });
   };
 
   const handleSaveAdd = async (e: React.FormEvent) => {
@@ -288,7 +363,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       </div>
 
-      {/* Tabel Master Barang Card */}
+      {/* Tabel Master Barang */}
       <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600">
@@ -310,7 +385,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
                     <p className="font-medium">Tidak ada barang yang ditemukan.</p>
-                    <p className="text-xs mt-1 text-slate-400">Gunakan kata kunci lain atau tambahkan barang baru.</p>
                   </td>
                 </tr>
               ) : (
@@ -378,14 +452,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                             </button>
                           )}
                           <button
-                            onClick={() => setAuditProduct(p)}
-                            title="Lihat Riwayat Perubahan (Audit Before & After)"
-                            className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition cursor-pointer relative"
+                            onClick={() => handleOpenAuditModal(p)}
+                            title="Lihat Riwayat Audit (Tersimpan di DB)"
+                            className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition cursor-pointer"
                           >
                             <History size={16} />
-                            {p.history && p.history.length > 0 && (
-                              <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-                            )}
                           </button>
                           {canEdit && (
                             <button
@@ -763,7 +834,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       )}
 
-      {/* Modal Riwayat Audit Barang */}
+      {/* Modal Riwayat Audit Barang - Before & After Persisten dari Database */}
       {auditProduct && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
@@ -790,127 +861,74 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4">
-              {!auditProduct.history || auditProduct.history.length === 0 ? (
+              {isLoadingAudit ? (
+                <div className="py-12 text-center text-slate-400">
+                  <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-xs">Mengambil catatan audit dari database...</p>
+                </div>
+              ) : dbAuditLogs.length === 0 ? (
                 <div className="text-center py-12 text-slate-400">
                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
                     <History size={24} />
                   </div>
-                  <p className="font-semibold text-slate-700">Belum Ada Riwayat Perubahan</p>
+                  <p className="font-semibold text-slate-700">Belum Ada Riwayat Perubahan di Database</p>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                    Setiap kali Anda mengedit nama, harga jual, HPP, atau stok barang ini, rekaman perbandingan Sebelum & Sesudah akan otomatis tercatat di sini.
+                    Setiap aksi Create, Update, dan Archive yang tersimpan di PostgreSQL akan tampil permanen di sini.
                   </p>
                 </div>
               ) : (
-                auditProduct.history.map((h, idx) => (
-                  <div key={h.id || idx} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 text-xs">
-                      <div className="flex items-center gap-2 text-slate-700 font-semibold">
-                        <User size={14} className="text-indigo-600" />
-                        <span>{h.updatedBy}</span>
+                dbAuditLogs.map((log) => {
+                  const { comparisons, reason } = parseAuditDetails(log.details || '');
+                  return (
+                    <div key={log.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+                      {/* Header Log */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 text-xs">
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                          <User size={14} className="text-indigo-600" />
+                          <span>{log.user || 'Sistem'} ({log.role || 'Admin'})</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400 font-mono">
+                          <Calendar size={13} />
+                          <span>{log.timestamp}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 text-slate-400 font-mono">
-                        <Calendar size={13} />
-                        <span>{h.timestamp}</span>
+
+                      {/* Alasan / Catatan Audit */}
+                      <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-start gap-2.5">
+                        <FileText size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">
+                            Aksi: {log.action}
+                          </span>
+                          <p className="text-xs text-slate-800 font-medium mt-0.5">
+                            {reason}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-start gap-2.5">
-                      <FileText size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">
-                          Alasan Perubahan
-                        </span>
-                        <p className="text-xs text-slate-800 font-medium mt-0.5">
-                          {h.reason}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
-                        Komparasi Nilai (Before → After)
-                      </span>
-
-                      {h.newValues.name !== undefined && h.newValues.name !== h.oldValues.name && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">Nama Barang</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            {h.oldValues.name}
+                      {/* Visualisasi Before -> After */}
+                      {comparisons.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                            Komparasi Nilai (Before → After)
                           </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            {h.newValues.name}
-                          </span>
-                        </div>
-                      )}
-
-                      {h.newValues.category !== undefined && h.newValues.category !== h.oldValues.category && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">Kategori</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            {h.oldValues.category}
-                          </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            {h.newValues.category}
-                          </span>
-                        </div>
-                      )}
-
-                      {h.newValues.price !== undefined && h.newValues.price !== h.oldValues.price && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">Harga Jual</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            Rp {(h.oldValues.price || 0).toLocaleString('id-ID')}
-                          </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            Rp {h.newValues.price.toLocaleString('id-ID')}
-                          </span>
-                        </div>
-                      )}
-
-                      {h.newValues.costPrice !== undefined && h.newValues.costPrice !== h.oldValues.costPrice && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">HPP (Modal)</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            Rp {(h.oldValues.costPrice || 0).toLocaleString('id-ID')}
-                          </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            Rp {h.newValues.costPrice.toLocaleString('id-ID')}
-                          </span>
-                        </div>
-                      )}
-
-                      {h.newValues.stock !== undefined && h.newValues.stock !== h.oldValues.stock && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">Stok Fisik</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            {h.oldValues.stock} {h.oldValues.unit || 'Pcs'}
-                          </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            {h.newValues.stock} {h.newValues.unit || h.oldValues.unit || 'Pcs'}
-                          </span>
-                        </div>
-                      )}
-
-                      {h.newValues.shelfLocation !== undefined && h.newValues.shelfLocation !== h.oldValues.shelfLocation && (
-                        <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <span className="col-span-3 font-semibold text-slate-600">Lokasi Rak</span>
-                          <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2 py-1 rounded">
-                            {h.oldValues.shelfLocation || '(Kosong)'}
-                          </span>
-                          <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
-                          <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                            {h.newValues.shelfLocation || '(Kosong)'}
-                          </span>
+                          {comparisons.map((c, i) => (
+                            <div key={i} className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                              <span className="col-span-3 font-semibold text-slate-600">{c.label}</span>
+                              <span className="col-span-4 font-medium text-rose-700 line-through bg-rose-50 px-2.5 py-1 rounded">
+                                {c.from}
+                              </span>
+                              <span className="col-span-1 text-center text-slate-400 font-bold">→</span>
+                              <span className="col-span-4 font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded">
+                                {c.to}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
