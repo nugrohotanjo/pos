@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
 import type { 
   ActiveMenu, 
-  Product, 
-  ProductAuditHistory,
   StockMovement, 
   StockMovementType, 
   StockBatch,
@@ -16,9 +16,21 @@ import type {
   CustomRole, 
   AppPermission 
 } from './types';
-import { INITIAL_PRODUCTS, FIXED_PRICE } from './data/mockData';
+
+import { 
+  INITIAL_ROLES, 
+  INITIAL_EMPLOYEES, 
+  INITIAL_STOCK_BATCHES, 
+  INITIAL_TRANSACTIONS, 
+  INITIAL_AUDIT_LOGS, 
+  INITIAL_PETTY_CASH 
+} from './data/initialData';
+
+import { useProductStore } from './stores/useProductStore';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
+import { CashierWelcome } from './components/layout/CashierWelcome';
+
 import { DashboardView } from './features/dashboard/DashboardView';
 import { ProductsView } from './features/products/ProductsView';
 import { PosView } from './features/pos/PosView';
@@ -28,118 +40,17 @@ import { UsersView } from './features/users/UsersView';
 import { SettingsView } from './features/settings/SettingsView';
 import { AuditTrailView } from './features/audit/AuditTrailView';
 import { LoginView } from './features/auth/LoginView';
+
 import type { Language } from './data/translations';
-import { 
-  getProductsFromApi, 
-  createProductToApi, 
-  updateProductToApi, 
-  toggleArchiveProductToApi 
-} from './utils/api';
-import { ShieldAlert, MonitorPlay } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
-
-
-
-const INITIAL_ROLES: CustomRole[] = [
-  {
-    id: 'role-owner',
-    name: 'Pemilik Toko (Owner)',
-    description: 'Akses penuh tanpa batas ke seluruh modul sistem',
-    permissions: [
-      'access_dashboard', 'manage_products', 'edit_products', 'manage_stock', 'view_reports',
-      'view_audit_trail', 'manage_employees', 'manage_settings', 'access_pos',
-      'void_transaction', 'exchange_items', 'manage_petty_cash'
-    ]
-  },
-  {
-    id: 'role-supervisor',
-    name: 'Supervisor Toko',
-    description: 'Otorisasi void kasir, edit barang, retur barang, dan mutasi stok',
-    permissions: [
-      'access_dashboard', 'manage_products', 'edit_products', 'manage_stock', 'view_reports',
-      'view_audit_trail', 'access_pos', 'void_transaction', 'exchange_items', 'manage_petty_cash'
-    ]
-  },
-  {
-    id: 'role-cashier',
-    name: 'Kasir Frontline',
-    description: 'Hanya melayani transaksi scan belanja dan kas kecil laci',
-    permissions: [
-      'access_pos', 'manage_petty_cash'
-    ]
-  }
-];
-
-const INITIAL_EMPLOYEES: Employee[] = [
-  { id: 'EMP-001', name: 'Fadhil', username: 'fadhil', roleId: 'role-owner', pin: '9999', isActive: true },
-  { id: 'EMP-002', name: 'Agus Supervisor', username: 'agus', roleId: 'role-supervisor', pin: '1234', isActive: true },
-  { id: 'EMP-003', name: 'Budi Santoso', username: 'budi', roleId: 'role-cashier', pin: '1111', isActive: true },
-];
-
-const INITIAL_STOCK_BATCHES: StockBatch[] = [
-  { id: 'BATCH-01', barcode: '8991001', purchaseCost: 18000, initialQty: 50, remainingQty: 50, receivedAt: '2026-09-01' },
-  { id: 'BATCH-02', barcode: '8991002', purchaseCost: 21000, initialQty: 30, remainingQty: 30, receivedAt: '2026-09-02' },
-  { id: 'BATCH-03', barcode: '8991003', purchaseCost: 19500, initialQty: 40, remainingQty: 40, receivedAt: '2026-09-03' },
-];
-
-const INITIAL_TRANSACTIONS: TransactionRecord[] = [
-  {
-    id: 'tx-1',
-    receiptNumber: 'TRX-2026-001',
-    timestamp: '2026-09-20 10:15',
-    cashierName: 'Budi Santoso',
-    totalQty: 2,
-    grossAmount: 70000,
-    totalDpp: 63064,
-    totalTax: 6936,
-    totalCogs: 39000,
-    grossProfit: 31000,
-    mdrRate: 0,
-    mdrFee: 0,
-    netSettlement: 70000,
-    cashReceived: 100000,
-    change: 30000,
-    paymentMethod: 'CASH',
-    itemsSummary: 'Kaos Polos x1, Set Alat Makan x1',
-    items: [
-      { barcode: '8991001', name: 'Kaos Polos Katun Combed', price: 35000, costPrice: 18000, qty: 1, subtotal: 35000, dpp: 31532, taxAmount: 3468 },
-      { barcode: '8991002', name: 'Set Alat Makan Stainless', price: 35000, costPrice: 21000, qty: 1, subtotal: 35000, dpp: 31532, taxAmount: 3468 },
-    ],
-  },
-];
-
-const INITIAL_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'AUD-1001',
-    timestamp: '2026-09-20 09:30:12',
-    actor: 'Agus (Supervisor)',
-    module: 'POS_TERMINAL',
-    action: 'VOID_ORDER',
-    details: 'Membatalkan seluruh belanja keranjang (3 item) karena dompet pelanggan tertinggal',
-    status: 'APPROVED',
-  }
-];
-
-const INITIAL_PETTY_CASH: PettyCashEntry[] = [
-  {
-    id: 'PETTY-001',
-    type: 'OUT',
-    amount: 15000,
-    reason: 'Beli kantong plastik kresek 2 pack',
-    timestamp: '2026-09-20 08:30',
-    cashierName: 'Budi Santoso'
-  }
-];
 
 export default function App() {
-  const [appName, setAppName] = useState('TOKO SERBA 35K');
-  // Sesi Login (null = Belum Login / Tampilkan Layar Login)
+  const [appName, setAppName] = useState('POS Ritel General');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<Employee | null>(INITIAL_EMPLOYEES[0]);
-const location = useLocation();
-  const navigate = useNavigate();
+  const [lang, setLang] = useState<Language>('id');
 
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname.replace(/^\//, '') || 'dashboard';
 
   const [activeMenu, setActiveMenuState] = useState<ActiveMenu>(() => {
@@ -160,42 +71,17 @@ const location = useLocation();
     navigate(menu === 'dashboard' ? '/' : `/${menu}`);
   };
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
-  const [backendError, setBackendError] = useState<string | null>(null);
-
-  const loadProducts = async () => {
-    setIsLoadingProducts(true);
-    setBackendError(null);
-    try {
-      const data = await getProductsFromApi();
-      setProducts(data);
-    } catch (err: any) {
-      console.error("Gagal sinkronisasi produk dengan database:", err);
-      setBackendError("Gagal terhubung ke server backend (http://localhost:8000). Pastikan server Go & Database PostgreSQL sedang berjalan.");
-      setProducts([]); // Kosongkan agar tidak menampilkan data dummy palsu
-    } finally {
-      setIsLoadingProducts(false);
-    }
-  };
+  // Ambil state dan dispatcher dari Zustand Store
+  const products = useProductStore((state) => state.products);
+  const fetchProducts = useProductStore((state) => state.fetchProducts);
+  const adjustStockLocal = useProductStore((state) => state.adjustStockLocal);
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    fetchProducts();
+  }, [fetchProducts]);
 
-  // Ambil data produk langsung dari PostgreSQL
-  useEffect(() => {
-    getProductsFromApi()
-      .then((data) => {
-        if (data && data.length > 0) {
-          setProducts(data);
-        }
-      })
-      .catch((err) => console.error("Gagal sinkronisasi produk dengan database:", err));
-  }, []);
-
+  // State Operasional Toko
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
-  const [lang, setLang] = useState<Language>('id');
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
@@ -209,7 +95,7 @@ const location = useLocation();
     edcEnabled: true,
   });
 
-  const currentUserRole = roles.find(r => r.id === currentUser?.roleId);
+  const currentUserRole = roles.find((r) => r.id === currentUser?.roleId);
 
   const hasPermission = (perm: AppPermission): boolean => {
     if (!currentUserRole) return false;
@@ -237,23 +123,22 @@ const location = useLocation();
     const newLog: AuditLog = {
       id: `AUD-${Date.now().toString().slice(-4)}`,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      actor, user: actor,
+      actor,
+      user: actor,
       module,
       action,
       details,
       status
     };
-    setAuditLogs(prev => [newLog, ...prev]);
+    setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // Handler Login & Logout
+  // Auth Handlers
   const handleLoginSuccess = (emp: Employee) => {
     setCurrentUser(emp);
-    const role = roles.find(r => r.id === emp.roleId);
-    
-    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Petugas "${emp.name}" berhasil login shift.`, emp.name, 'APPROVED');
+    const role = roles.find((r) => r.id === emp.roleId);
+    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Petugas "${emp.name}" login shift.`, emp.name, 'APPROVED');
 
-    // Arahkan otomatis ke layar kasir jika Kasir, atau ke dashboard jika Owner/Supervisor
     if (role && !role.permissions.includes('access_dashboard')) {
       setActiveMenu('pos');
     } else {
@@ -268,134 +153,46 @@ const location = useLocation();
     setCurrentUser(null);
   };
 
-  const handleAddProduct = async (newProduct: Product) => {
-    try {
-      // 1. Simpan ke database PostgreSQL via backend Go
-      await createProductToApi(newProduct);
-
-      // 2. Perbarui state UI
-      setProducts(prev => [{ ...newProduct, isActive: true, history: [] }, ...prev]);
-      
-      const initialBatch: StockBatch = {
-        id: `BATCH-${Date.now().toString().slice(-4)}`,
-        barcode: newProduct.barcode,
-        purchaseCost: newProduct.costPrice || 20000,
-        initialQty: newProduct.stock,
-        remainingQty: newProduct.stock,
-        receivedAt: new Date().toLocaleDateString('id-ID')
-      };
-      setStockBatches(prev => [...prev, initialBatch]);
-      pushAudit('PRODUCTS', 'CREATE_PRODUCT', `Menambahkan SKU baru "${newProduct.name}" (Barcode: ${newProduct.barcode})`);
-    } catch (err: any) {
-      alert(`Gagal menyimpan produk: ${err.message}`);
-    }
-  };
-
-  const handleUpdateProduct = async (
-    barcode: string,
-    updatedFields: { name: string; category: string; stock: number; price?: number; costPrice?: number },
-    reason: string
-  ) => {
-    const target = products.find(p => p.barcode === barcode);
-    if (!target || !currentUser) return;
-
-    try {
-      // 1. Simpan perubahan ke PostgreSQL via backend Go
-      await updateProductToApi(barcode, updatedFields);
-
-      // 2. Update state lokal & catat riwayat audit
-      const timestamp = new Date().toLocaleString('id-ID');
-      const updatedBy = `${currentUser.name} (${currentUserRole?.name})`;
-
-      const historyEntry: ProductAuditHistory = {
-        id: `HIST-${Date.now().toString().slice(-4)}`,
-        timestamp,
-        updatedBy,
-        oldValues: {
-          name: target.name,
-          category: target.category,
-          stock: target.stock,
-          price: target.price || FIXED_PRICE,
-          costPrice: target.costPrice || 20000,
-        },
-        newValues: {
-          ...updatedFields,
-        },
-        reason,
-      };
-
-      setProducts(products.map(p => {
-        if (p.barcode === barcode) {
-          return {
-            ...p,
-            ...updatedFields,
-            history: [historyEntry, ...(p.history || [])]
-          };
-        }
-        return p;
-      }));
-
-      pushAudit('PRODUCTS', 'UPDATE_PRODUCT', `Koreksi data barang "${target.name}" (${barcode}): Alasan - ${reason}`);
-    } catch (err: any) {
-      alert(`Gagal memperbarui produk: ${err.message}`);
-    }
-  };
-
-  const handleToggleArchiveProduct = async (barcode: string) => {
-    const target = products.find(p => p.barcode === barcode);
-    if (!target) return;
-    const currentlyActive = target.isActive !== false;
-
-    try {
-      // 1. Kirim patch toggle status ke backend Go
-      await toggleArchiveProductToApi(barcode);
-
-      // 2. Update state lokal
-      setProducts(products.map(p => p.barcode === barcode ? { ...p, isActive: !currentlyActive } : p));
-      pushAudit('PRODUCTS', currentlyActive ? 'ARCHIVE_PRODUCT' : 'RESTORE_PRODUCT', `${currentlyActive ? 'Mengarsipkan' : 'Memulihkan'} barang: "${target.name}" (${barcode})`);
-    } catch (err: any) {
-      alert(`Gagal mengubah status arsip produk: ${err.message}`);
-    }
-  };
-
+  // User & Settings Handlers
   const handleAddEmployee = (newEmp: Employee) => {
     setEmployees([...employees, newEmp]);
-    const role = roles.find(r => r.id === newEmp.roleId);
+    const role = roles.find((r) => r.id === newEmp.roleId);
     pushAudit('USERS_ROLES', 'CREATE_EMPLOYEE', `Mendaftarkan staf baru "${newEmp.name}" (@${newEmp.username}) dengan role: ${role?.name}`);
   };
 
   const handleToggleEmployeeStatus = (id: string) => {
-    const emp = employees.find(e => e.id === id);
-    setEmployees(employees.map(e => e.id === id ? { ...e, isActive: !e.isActive } : e));
-    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Mengubah status staf "${emp?.name}" menjadi: ${!emp?.isActive ? 'AKTIF' : 'NONAKTIF'}`);
+    const emp = employees.find((e) => e.id === id);
+    setEmployees(employees.map((e) => (e.id === id ? { ...e, isActive: !e.isActive } : e)));
+    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Ubah status staf "${emp?.name}" -> ${!emp?.isActive ? 'AKTIF' : 'NONAKTIF'}`);
   };
 
   const handleAddRole = (newRole: CustomRole) => {
     setRoles([...roles, newRole]);
-    pushAudit('USERS_ROLES', 'CREATE_ROLE', `Membuat role baru "${newRole.name}" dengan ${newRole.permissions.length} izin fitur`);
+    pushAudit('USERS_ROLES', 'CREATE_ROLE', `Membuat role "${newRole.name}" dengan ${newRole.permissions.length} izin`);
   };
 
   const handleUpdateRolePermissions = (roleId: string, permissions: AppPermission[]) => {
-    setRoles(roles.map(r => r.id === roleId ? { ...r, permissions } : r));
-    const target = roles.find(r => r.id === roleId);
-    pushAudit('USERS_ROLES', 'UPDATE_PERMISSIONS', `Memperbarui hak akses role "${target?.name}": total ${permissions.length} izin aktif`);
+    setRoles(roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)));
+    const target = roles.find((r) => r.id === roleId);
+    pushAudit('USERS_ROLES', 'UPDATE_PERMISSIONS', `Update hak akses role "${target?.name}": total ${permissions.length} izin`);
   };
 
   const handleUpdatePaymentConfig = (key: keyof PaymentConfig, value: boolean) => {
-    setPaymentConfig(prev => ({ ...prev, [key]: value }));
-    pushAudit('SETTINGS', 'UPDATE_PAYMENT_CONFIG', `Mengubah status jalur bayar ${key} menjadi: ${value ? 'AKTIF' : 'NONAKTIF / GANGGUAN'}`);
+    setPaymentConfig((prev) => ({ ...prev, [key]: value }));
+    pushAudit('SETTINGS', 'UPDATE_PAYMENT_CONFIG', `Ubah status payment ${key} -> ${value ? 'AKTIF' : 'NONAKTIF'}`);
   };
 
   const handleAddPettyCash = (entry: PettyCashEntry) => {
     setPettyCashRecords([entry, ...pettyCashRecords]);
-    pushAudit('PETTY_CASH', entry.type === 'IN' ? 'PETTY_CASH_IN' : 'PETTY_CASH_OUT', `Mutasi laci kasir Rp ${entry.amount.toLocaleString('id-ID')} untuk: ${entry.reason}`, currentUser?.name || 'Kasir', 'APPROVED');
+    pushAudit('PETTY_CASH', entry.type === 'IN' ? 'PETTY_CASH_IN' : 'PETTY_CASH_OUT', `Kas laci Rp ${entry.amount.toLocaleString('id-ID')}: ${entry.reason}`, currentUser?.name || 'Kasir', 'APPROVED');
   };
 
   const handleAddAuditLog = (log: AuditLog) => {
-    setAuditLogs(prev => [log, ...prev]);
+    setAuditLogs((prev) => [log, ...prev]);
   };
 
-  const deductFifoStock = (barcode: string, qtyToDeduct: number): number => {
+  // FIFO Deduct & Sales Execution
+  const deductFifoStock = (barcode: string, qtyToDeduct: number, fallbackCost: number): number => {
     let remainingToDeduct = qtyToDeduct;
     let totalItemCost = 0;
     const updatedBatches = [...stockBatches];
@@ -412,7 +209,7 @@ const location = useLocation();
     }
 
     if (remainingToDeduct > 0) {
-      totalItemCost += remainingToDeduct * 20000;
+      totalItemCost += remainingToDeduct * fallbackCost;
     }
 
     setStockBatches(updatedBatches);
@@ -439,10 +236,12 @@ const location = useLocation();
     let totalDpp = 0;
     let totalTax = 0;
 
-    const itemsSnapshot = cart.map(i => {
-      const itemSubtotal = i.qty * FIXED_PRICE;
-      const itemCostTotal = i.qty > 0 ? deductFifoStock(i.barcode, i.qty) : 0;
-      const avgCostPerUnit = i.qty > 0 ? Math.round(itemCostTotal / i.qty) : 20000;
+    const itemsSnapshot = cart.map((i) => {
+      const itemPrice = i.price || 0;
+      const itemCost = i.costPrice || 0;
+      const itemSubtotal = i.qty * itemPrice;
+      const itemCostTotal = i.qty > 0 ? deductFifoStock(i.barcode, i.qty, itemCost) : 0;
+      const avgCostPerUnit = i.qty > 0 ? Math.round(itemCostTotal / i.qty) : itemCost;
       totalCogs += itemCostTotal;
 
       const dpp = Math.round(itemSubtotal / (1 + TAX_RATE));
@@ -454,7 +253,7 @@ const location = useLocation();
       return {
         barcode: i.barcode,
         name: i.name,
-        price: FIXED_PRICE,
+        price: itemPrice,
         costPrice: avgCostPerUnit,
         qty: i.qty,
         subtotal: itemSubtotal,
@@ -465,7 +264,7 @@ const location = useLocation();
     });
 
     const grossProfit = grossAmount - totalCogs;
-    const summary = cart.map(i => `${i.name} (${i.qty > 0 ? '+' : ''}${i.qty})`).join(', ');
+    const summary = cart.map((i) => `${i.name} (${i.qty > 0 ? '+' : ''}${i.qty})`).join(', ');
 
     const newTx: TransactionRecord = {
       id: `tx-${Date.now()}`,
@@ -490,24 +289,15 @@ const location = useLocation();
 
     setTransactions([newTx, ...transactions]);
 
-    const negativeStockAlerts: string[] = [];
-    const updatedProducts = products.map(prod => {
-      const cartItem = cart.find(c => c.barcode === prod.barcode);
-      if (cartItem) {
-        const newStock = prod.stock - cartItem.qty;
-        if (newStock < 0) negativeStockAlerts.push(`${prod.name} (Sisa: ${newStock})`);
-        return { ...prod, stock: newStock };
+    // Update stok produk di Zustand Store
+    cart.forEach((c) => {
+      const p = products.find((prod) => prod.barcode === c.barcode);
+      if (p) {
+        adjustStockLocal(p.barcode, p.stock - c.qty);
       }
-      return prod;
     });
 
-    setProducts(updatedProducts);
-
-    pushAudit('POS_TERMINAL', 'SALE_COMPLETED', `Transaksi ${newTx.receiptNumber} selesai (${method}) senilai Rp ${grossAmount.toLocaleString('id-ID')}. Laba FIFO: Rp ${grossProfit.toLocaleString('id-ID')}`, currentUser?.name || 'Kasir');
-
-    if (negativeStockAlerts.length > 0) {
-      pushAudit('INVENTORY', 'STOCK_MUTATION', `PERINGATAN GUDANG: Transaksi ${newTx.receiptNumber} menyebabkan stok minus pada: ${negativeStockAlerts.join(', ')}. Jadwalkan Stock Opname segera.`, 'Sistem POS (Auto)', 'APPROVED');
-    }
+    pushAudit('POS_TERMINAL', 'SALE_COMPLETED', `Transaksi ${newTx.receiptNumber} selesai (${method}) Rp ${grossAmount.toLocaleString('id-ID')}`, currentUser?.name || 'Kasir');
 
     return newTx;
   };
@@ -519,32 +309,29 @@ const location = useLocation();
     reason: string,
     purchaseCost?: number
   ) => {
-    setProducts(products.map(p => {
-      if (p.barcode === barcode) {
-        const updatedStock = type === 'IN' ? p.stock + quantity : Math.max(0, p.stock - quantity);
-        return { ...p, stock: updatedStock };
-      }
-      return p;
-    }));
+    const targetProduct = products.find((p) => p.barcode === barcode);
+    if (!targetProduct) return;
+
+    const updatedStock = type === 'IN' ? targetProduct.stock + quantity : Math.max(0, targetProduct.stock - quantity);
+    adjustStockLocal(barcode, updatedStock);
 
     if (type === 'IN') {
       const newBatch: StockBatch = {
         id: `BATCH-${Date.now().toString().slice(-4)}`,
         barcode,
-        purchaseCost: purchaseCost || 20000,
+        purchaseCost: purchaseCost || 0,
         initialQty: quantity,
         remainingQty: quantity,
         receivedAt: new Date().toLocaleDateString('id-ID')
       };
-      setStockBatches(prev => [...prev, newBatch]);
+      setStockBatches((prev) => [...prev, newBatch]);
     }
 
-    const targetProduct = products.find(p => p.barcode === barcode);
     const newRecord: StockMovement = {
       id: `MOV-${Date.now().toString().slice(-4)}`,
       timestamp: new Date().toLocaleString('id-ID'),
       barcode,
-      productName: targetProduct?.name || barcode,
+      productName: targetProduct.name,
       type,
       quantity,
       purchaseCost,
@@ -553,23 +340,10 @@ const location = useLocation();
     };
     setStockMovements([newRecord, ...stockMovements]);
 
-    pushAudit('INVENTORY', 'STOCK_MUTATION', `Penyesuaian stok ${type === 'IN' ? '+' : '-'}${quantity} pcs untuk "${targetProduct?.name}" (${barcode}). Alasan: ${reason}`);
+    pushAudit('INVENTORY', 'STOCK_MUTATION', `Penyesuaian stok ${type === 'IN' ? '+' : '-'}${quantity} untuk "${targetProduct.name}" (${barcode}). Alasan: ${reason}`);
   };
 
-  // 1. JIKA BELUM LOGIN: TAMPILKAN LAYAR LOGIN
-  if (!currentUser) {
-    return (
-      <LoginView
-        employees={employees}
-        roles={roles}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    );
-  }
-
-  // 2. JIKA SEDANG DI TERMINAL KASIR (POS)
-  const activeProductsForPos = products.filter(p => p.isActive !== false);
-
+  // 1. Tampilan Login jika belum autentikasi
   if (!currentUser) {
     return (
       <LoginView
@@ -580,6 +354,9 @@ const location = useLocation();
       />
     );
   }
+
+  // 2. Tampilan Layar Kasir (POS)
+  const activeProductsForPos = products.filter((p) => p.isActive !== false);
 
   if (activeMenu === 'pos') {
     return (
@@ -596,59 +373,7 @@ const location = useLocation();
     );
   }
 
-  // Tampilan Selamat Datang Khusus Kasir / Non-Admin
-  const renderCashierWelcome = () => (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 select-none">
-      <div className="max-w-xl w-full bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-6">
-        
-        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-          <MonitorPlay className="w-8 h-8" />
-        </div>
-
-        <div className="space-y-1.5">
-          <h2 className="text-2xl font-black text-slate-800">
-            Selamat Bertugas, {currentUser?.name}!
-          </h2>
-          <p className="text-xs text-slate-500">
-            Shift kasir aktif. Siap melayani transaksi pelanggan di Toko Serba 35.000.
-          </p>
-        </div>
-
-        {/* Tombol Utama Langsung Mulai Kasir */}
-        <div>
-          <button
-            onClick={() => setActiveMenu('pos')}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 active:scale-[0.99]"
-          >
-            <MonitorPlay className="w-5 h-5" />
-            <span>MULAI TRANSAKSI KASIR</span>
-          </button>
-        </div>
-
-        {/* Panduan Pintas Keyboard */}
-        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left space-y-2.5">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Pengingat Shortcut Kasir Cepat:
-          </span>
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 font-mono">
-            <div><b>[F1]</b> Bayar Tunai</div>
-            <div><b>[F2]</b> Bayar Non-Tunai</div>
-            <div><b>[F4]</b> Parkir Pesanan</div>
-            <div><b>[F6]</b> Input Kas Laci</div>
-            <div><b>[F7]</b> Mode Retur / Tukar</div>
-            <div><b>[F8]</b> Void (PIN Supervisor)</div>
-          </div>
-        </div>
-
-        <p className="text-[11px] text-slate-400">
-          Jika shift Anda telah selesai, gunakan tombol <b>[F9] Tutup Shift</b> di layar kasir untuk hitung fisik laci.
-        </p>
-
-      </div>
-    </div>
-  );
-
-  // 3. LAYOUT UTAMA ADMIN SISTEM
+  // 3. Layout Utama Dashboard
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       <Sidebar 
@@ -683,48 +408,30 @@ const location = useLocation();
                 stockMovements={stockMovements}
                 setActiveMenu={setActiveMenu}
               />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'products' && (
             hasPermission('manage_products') ? (
-              backendError ? (
-                <div className="p-8 max-w-4xl mx-auto">
-                  <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-6 text-center shadow-sm">
-                    <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <ShieldAlert size={32} />
-                    </div>
-                    <h2 className="text-xl font-bold text-rose-900 mb-2">
-                      Koneksi Backend Terputus
-                    </h2>
-                    <p className="text-rose-700 text-sm max-w-lg mx-auto mb-6">
-                      {backendError}
-                    </p>
-                    <div className="flex justify-center gap-3">
-                      <button
-                        onClick={loadProducts}
-                        className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl transition cursor-pointer shadow-sm"
-                      >
-                        Coba Hubungkan Kembali
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : isLoadingProducts ? (
-                <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-                  <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <p className="font-medium text-sm">Memuat data produk dari database...</p>
-                </div>
-              ) : (
-                <ProductsView
-                  products={products}
-                  onAddProduct={handleAddProduct}
-                  onToggleArchiveProduct={handleToggleArchiveProduct}
-                  onUpdateProduct={handleUpdateProduct}
-                  canEdit={hasPermission('edit_products')}
-                />
-              )
-            ) : renderCashierWelcome()
+              <ProductsView
+                canEdit={hasPermission('edit_products')}
+                currentUser={currentUser}
+                currentUserRole={currentUserRole}
+                onAuditLog={pushAudit}
+              />
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'stock-ledger' && (
@@ -734,7 +441,13 @@ const location = useLocation();
                 movements={stockMovements} 
                 onAdjustStock={handleAdjustStock} 
               />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'reports' && (
@@ -744,13 +457,25 @@ const location = useLocation();
                 auditLogs={auditLogs}
                 pettyCashRecords={pettyCashRecords}
               />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'audit-trail' && (
             hasPermission('view_audit_trail') ? (
               <AuditTrailView logs={auditLogs} />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'users' && (
@@ -763,7 +488,13 @@ const location = useLocation();
                 onAddRole={handleAddRole}
                 onUpdateRolePermissions={handleUpdateRolePermissions}
               />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
           
           {activeMenu === 'settings' && (
@@ -774,7 +505,13 @@ const location = useLocation();
                 appName={appName}
                 onUpdateAppName={handleUpdateAppName}
               />
-            ) : renderCashierWelcome()
+            ) : (
+              <CashierWelcome 
+                currentUser={currentUser} 
+                appName={appName} 
+                onStartPos={setActiveMenu} 
+              />
+            )
           )}
         </main>
       </div>

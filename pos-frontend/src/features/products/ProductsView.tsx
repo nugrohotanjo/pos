@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { Product } from '../../types';
+import type { Product, Employee, CustomRole } from '../../types';
+import { useProductStore } from '../../stores/useProductStore';
 import { 
   Plus, 
   Search, 
@@ -13,40 +14,34 @@ import {
   MapPin, 
   AlertTriangle,
   Package,
-  ArrowRight,
+  ShieldAlert,
   User,
   Calendar,
   FileText
 } from 'lucide-react';
 
 interface ProductsViewProps {
-  products: Product[];
-  onAddProduct: (product: Product) => void;
-  onToggleArchiveProduct: (barcode: string) => void;
-  onUpdateProduct: (
-    barcode: string,
-    updatedFields: { 
-      name: string; 
-      category: string; 
-      stock: number; 
-      price: number; 
-      costPrice: number;
-      unit?: string;
-      minStock?: number;
-      shelfLocation?: string;
-    },
-    reason: string
-  ) => void;
   canEdit: boolean;
+  currentUser: Employee | null;
+  currentUserRole?: CustomRole;
+  onAuditLog?: (module: any, action: any, details: string) => void;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
-  products,
-  onAddProduct,
-  onToggleArchiveProduct,
-  onUpdateProduct,
-  canEdit
+  canEdit,
+  currentUser,
+  currentUserRole,
+  onAuditLog
 }) => {
+  // Ambil state dan aksi langsung dari Zustand Store
+  const products = useProductStore((state) => state.products);
+  const isLoading = useProductStore((state) => state.isLoading);
+  const backendError = useProductStore((state) => state.backendError);
+  const fetchProducts = useProductStore((state) => state.fetchProducts);
+  const addProduct = useProductStore((state) => state.addProduct);
+  const updateProduct = useProductStore((state) => state.updateProduct);
+  const toggleArchiveProduct = useProductStore((state) => state.toggleArchiveProduct);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ACTIVE');
@@ -78,14 +73,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [editShelfLocation, setEditShelfLocation] = useState('');
   const [editReason, setEditReason] = useState('');
 
+  const actorLabel = currentUser ? `${currentUser.name} (${currentUserRole?.name || 'Staf'})` : 'Sistem';
+
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach(p => set.add(p.category));
+    products.forEach((p) => set.add(p.category));
     return Array.from(set);
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    return products.filter((p) => {
       const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           p.barcode.includes(searchTerm);
       const matchCategory = categoryFilter === 'ALL' || p.category === categoryFilter;
@@ -111,36 +108,44 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setEditReason('');
   };
 
-  const handleSaveAdd = (e: React.FormEvent) => {
+  const handleSaveAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBarcode.trim() || !newName.trim()) {
       alert('Barcode dan Nama Barang wajib diisi!');
       return;
     }
 
-    onAddProduct({
-      barcode: newBarcode.trim(),
-      name: newName.trim(),
-      category: newCategory.trim() || 'Umum',
-      price: Number(newPrice) || 0,
-      costPrice: Number(newCostPrice) || 0,
-      stock: Number(newStock) || 0,
-      unit: newUnit,
-      minStock: Number(newMinStock) || 5,
-      shelfLocation: newShelfLocation.trim(),
-      isActive: true
-    });
+    try {
+      await addProduct(
+        {
+          barcode: newBarcode.trim(),
+          name: newName.trim(),
+          category: newCategory.trim() || 'Umum',
+          price: Number(newPrice) || 0,
+          costPrice: Number(newCostPrice) || 0,
+          stock: Number(newStock) || 0,
+          unit: newUnit,
+          minStock: Number(newMinStock) || 5,
+          shelfLocation: newShelfLocation.trim(),
+          isActive: true
+        },
+        actorLabel,
+        (details) => onAuditLog?.('PRODUCTS', 'CREATE_PRODUCT', details)
+      );
 
-    setIsAddModalOpen(false);
-    setNewBarcode('');
-    setNewName('');
-    setNewPrice('35000');
-    setNewCostPrice('20000');
-    setNewStock('10');
-    setNewShelfLocation('');
+      setIsAddModalOpen(false);
+      setNewBarcode('');
+      setNewName('');
+      setNewPrice('35000');
+      setNewCostPrice('20000');
+      setNewStock('10');
+      setNewShelfLocation('');
+    } catch (err: any) {
+      alert(`Gagal menambah produk: ${err.message}`);
+    }
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     if (!editReason.trim()) {
@@ -148,23 +153,74 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       return;
     }
 
-    onUpdateProduct(
-      editingProduct.barcode,
-      {
-        name: editName.trim(),
-        category: editCategory.trim(),
-        price: Number(editPrice) || 0,
-        costPrice: Number(editCostPrice) || 0,
-        stock: Number(editStock) || 0,
-        unit: editUnit,
-        minStock: Number(editMinStock) || 5,
-        shelfLocation: editShelfLocation.trim()
-      },
-      editReason.trim()
-    );
+    try {
+      await updateProduct(
+        editingProduct.barcode,
+        {
+          name: editName.trim(),
+          category: editCategory.trim(),
+          price: Number(editPrice) || 0,
+          costPrice: Number(editCostPrice) || 0,
+          stock: Number(editStock) || 0,
+          unit: editUnit,
+          minStock: Number(editMinStock) || 5,
+          shelfLocation: editShelfLocation.trim()
+        },
+        editReason.trim(),
+        actorLabel,
+        (details) => onAuditLog?.('PRODUCTS', 'UPDATE_PRODUCT', details)
+      );
 
-    setEditingProduct(null);
+      setEditingProduct(null);
+    } catch (err: any) {
+      alert(`Gagal memperbarui produk: ${err.message}`);
+    }
   };
+
+  const handleToggleArchive = async (barcode: string) => {
+    try {
+      await toggleArchiveProduct(barcode, (action, details) => {
+        onAuditLog?.('PRODUCTS', action, details);
+      });
+    } catch (err: any) {
+      alert(`Gagal mengubah status produk: ${err.message}`);
+    }
+  };
+
+  if (backendError) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-6 text-center shadow-sm">
+          <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-rose-900 mb-2">
+            Koneksi Backend Terputus
+          </h2>
+          <p className="text-rose-700 text-sm max-w-lg mx-auto mb-6">
+            {backendError}
+          </p>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={fetchProducts}
+              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl transition cursor-pointer shadow-sm"
+            >
+              Coba Hubungkan Kembali
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-medium text-sm">Memuat data produk dari database...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -213,7 +269,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-slate-700 font-medium"
           >
             <option value="ALL">Semua Kategori ({categories.length})</option>
-            {categories.map(c => (
+            {categories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -333,7 +389,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           </button>
                           {canEdit && (
                             <button
-                              onClick={() => onToggleArchiveProduct(p.barcode)}
+                              onClick={() => handleToggleArchive(p.barcode)}
                               title={p.isActive !== false ? "Arsipkan Barang" : "Pulihkan Barang"}
                               className={`p-2 rounded-xl transition cursor-pointer ${
                                 p.isActive !== false 
@@ -707,7 +763,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       )}
 
-      {/* Modal Riwayat Audit Barang - Before & After Detail */}
+      {/* Modal Riwayat Audit Barang */}
       {auditProduct && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
@@ -747,7 +803,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               ) : (
                 auditProduct.history.map((h, idx) => (
                   <div key={h.id || idx} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-                    {/* Header Log */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 text-xs">
                       <div className="flex items-center gap-2 text-slate-700 font-semibold">
                         <User size={14} className="text-indigo-600" />
@@ -759,7 +814,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Alasan / Catatan Audit */}
                     <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-start gap-2.5">
                       <FileText size={16} className="text-amber-600 shrink-0 mt-0.5" />
                       <div>
@@ -772,13 +826,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Before vs After Grid Per Field */}
                     <div className="space-y-2">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
                         Komparasi Nilai (Before → After)
                       </span>
 
-                      {/* Field: Nama Barang */}
                       {h.newValues.name !== undefined && h.newValues.name !== h.oldValues.name && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">Nama Barang</span>
@@ -792,7 +844,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </div>
                       )}
 
-                      {/* Field: Kategori */}
                       {h.newValues.category !== undefined && h.newValues.category !== h.oldValues.category && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">Kategori</span>
@@ -806,7 +857,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </div>
                       )}
 
-                      {/* Field: Harga Jual */}
                       {h.newValues.price !== undefined && h.newValues.price !== h.oldValues.price && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">Harga Jual</span>
@@ -820,7 +870,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </div>
                       )}
 
-                      {/* Field: HPP / Modal */}
                       {h.newValues.costPrice !== undefined && h.newValues.costPrice !== h.oldValues.costPrice && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">HPP (Modal)</span>
@@ -834,7 +883,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </div>
                       )}
 
-                      {/* Field: Stok */}
                       {h.newValues.stock !== undefined && h.newValues.stock !== h.oldValues.stock && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">Stok Fisik</span>
@@ -848,7 +896,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </div>
                       )}
 
-                      {/* Field: Lokasi Rak */}
                       {h.newValues.shelfLocation !== undefined && h.newValues.shelfLocation !== h.oldValues.shelfLocation && (
                         <div className="grid grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                           <span className="col-span-3 font-semibold text-slate-600">Lokasi Rak</span>
