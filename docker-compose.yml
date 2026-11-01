@@ -1,10 +1,15 @@
 services:
   pos-dashboard:
-    build: ./pos-frontend
-    container_name: serba-35k-pos-dashboard
+    build:
+      context: ./pos-frontend
+      dockerfile: Dockerfile.dev   # Gunakan dockerfile khusus node dev (bukan nginx)
     ports:
       - "8001:80"
-    restart: always
+    volumes:
+      - ./pos-frontend:/app        # Mengikat folder kodingan lokal ke dalam container
+      - /app/node_modules          # Mencegah node_modules lokal menimpa node_modules container
+    environment:
+      - NODE_ENV=development
 
   pos-store:
     build:

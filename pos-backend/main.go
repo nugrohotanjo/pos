@@ -46,9 +46,24 @@ func main() {
 		// Audit Logs
 		v1.GET("/audit-logs", handlers.GetAuditLogs)
 
-		// Settings Toko & Sistem
+		// Settings Toko
 		v1.GET("/settings", handlers.GetSettings)
 		v1.PUT("/settings", handlers.UpdateSettings)
+
+		// Roles
+		v1.GET("/roles", handlers.GetRoles)
+		v1.POST("/roles", handlers.CreateRole)
+		v1.PUT("/roles/:id", handlers.UpdateRole)
+		v1.PUT("/roles/:id/permissions", handlers.UpdateRolePermissions)
+
+		// Employees
+		v1.GET("/employees", handlers.GetEmployees)
+		v1.POST("/employees", handlers.CreateEmployee)
+		v1.PUT("/employees/:id", handlers.UpdateEmployee)
+		v1.PATCH("/employees/:id/toggle-status", handlers.ToggleEmployeeStatus)
+
+		// Auth Login
+		v1.POST("/auth/login", handlers.AuthLogin)
 
 		// Orders / POS
 		v1.POST("/orders", handlers.CreateOrder)

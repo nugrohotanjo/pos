@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ActiveMenu, Employee, CustomRole } from '../../types';
+import type { ActiveMenu, Employee, CustomRole, AppPermission } from '../../types';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -29,7 +29,7 @@ interface MenuItem {
   id: ActiveMenu;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  permission?: string;
+  permission: AppPermission;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,10 +53,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'settings', label: 'Pengaturan Toko', icon: Settings, permission: 'manage_settings' },
   ];
 
-  const hasAccess = (perm?: string) => {
-    if (!perm || !userRole) return true;
+  // Owner selalu punya akses ke semua menu. Role lain dicek berdasarkan array permissions.
+  const hasAccess = (perm: AppPermission) => {
+    if (!userRole) return false;
     if (userRole.id === 'role-owner') return true;
-    return userRole.permissions.includes(perm as any);
+    return userRole.permissions?.includes(perm);
+  };
+
+  // Cek akses tombol kasir (mendukung alias pos_access atau access_pos)
+  const canAccessPos = () => {
+    if (!userRole) return false;
+    if (userRole.id === 'role-owner') return true;
+    return (
+      userRole.permissions?.includes('pos_access') ||
+      userRole.permissions?.includes('access_pos')
+    );
   };
 
   const filteredMenus = menuItems.filter((item) => hasAccess(item.permission));
@@ -68,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Backdrop Gelap untuk Tampilan Mobile */}
+      {/* Backdrop Mobile */}
       {isOpenMobile && (
         <div
           onClick={onCloseMobile}
@@ -96,7 +107,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {/* Tombol Tutup Khusus Layar Mobile */}
           <button
             onClick={onCloseMobile}
             className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg"
@@ -105,7 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Profil Mini */}
+        {/* Profil Singkat Petugas */}
         {currentUser && (
           <div className={`p-3 border-b border-slate-800/80 ${isCollapsed ? 'text-center' : ''}`}>
             <div className="flex items-center gap-3 bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/50">
@@ -122,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Navigasi Menu Utama */}
+        {/* Daftar Menu Dinamis Sesuai Role & Permission */}
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {filteredMenus.map((item) => {
             const Icon = item.icon;
@@ -145,18 +155,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Navigasi Bawah: Shortcut Kasir & Logout */}
+        {/* Tombol Kasir & Keluar Akun */}
         <div className="p-3 border-t border-slate-800/80 space-y-2">
-          <button
-            onClick={() => handleMenuClick('pos')}
-            title={isCollapsed ? 'Buka Layar Kasir' : undefined}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
-          >
-            <ShoppingCart size={18} className="shrink-0" />
-            {!isCollapsed && <span>BUKA LAYAR KASIR</span>}
-          </button>
+          {canAccessPos() && (
+            <button
+              onClick={() => handleMenuClick('pos')}
+              title={isCollapsed ? 'Buka Layar Kasir' : undefined}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm ${
+                isCollapsed ? 'justify-center' : ''
+              }`}
+            >
+              <ShoppingCart size={18} className="shrink-0" />
+              {!isCollapsed && <span>BUKA LAYAR KASIR</span>}
+            </button>
+          )}
 
           <button
             onClick={onLogout}

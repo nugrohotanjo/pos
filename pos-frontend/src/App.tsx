@@ -18,8 +18,6 @@ import type {
 } from './types';
 
 import { 
-  INITIAL_ROLES, 
-  INITIAL_EMPLOYEES, 
   INITIAL_STOCK_BATCHES, 
   INITIAL_TRANSACTIONS, 
   INITIAL_AUDIT_LOGS, 
@@ -27,6 +25,7 @@ import {
 } from './data/initialData';
 
 import { useProductStore } from './stores/useProductStore';
+import { getSettingsFromApi, getRolesFromApi } from './utils/api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { CashierWelcome } from './components/layout/CashierWelcome';
@@ -47,7 +46,18 @@ export default function App() {
   const [appName, setAppName] = useState('POS Ritel General');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<Employee | null>(INITIAL_EMPLOYEES[0]);
+  
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
+    const saved = localStorage.getItem('pos_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [roles, setRoles] = useState<CustomRole[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<CustomRole | undefined>(() => {
+    const saved = localStorage.getItem('pos_current_role');
+    return saved ? JSON.parse(saved) : undefined;
+  });
+
   const [lang, setLang] = useState<Language>('id');
 
   const location = useLocation();
@@ -73,7 +83,6 @@ export default function App() {
   };
 
   const handleToggleSidebar = () => {
-    // Pada resolusi kecil buka drawer mobile, pada desktop toggle collapse
     if (window.innerWidth < 768) {
       setIsMobileSidebarOpen((prev) => !prev);
     } else {
@@ -85,16 +94,10 @@ export default function App() {
   const fetchProducts = useProductStore((state) => state.fetchProducts);
   const adjustStockLocal = useProductStore((state) => state.adjustStockLocal);
 
-  useEffect(() => {
-    fetchProducts(); import("./utils/api").then(m => m.getSettingsFromApi().then(s => { setAppName(s.app_name); setPaymentConfig({ cashEnabled: s.cash_enabled, qrisEnabled: s.qris_enabled, edcEnabled: s.edc_enabled }); }));
-  }, [fetchProducts]);
-
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
-  const [roles, setRoles] = useState<CustomRole[]>(INITIAL_ROLES);
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
   const [pettyCashRecords, setPettyCashRecords] = useState<PettyCashEntry[]>(INITIAL_PETTY_CASH);
 
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig>({
@@ -103,50 +106,57 @@ export default function App() {
     edcEnabled: true,
   });
 
-  const currentUserRole = roles.find((r) => r.id === currentUser?.roleId);
+  // Sinkronisasi Roles & Settings dari PostgreSQL
+  const syncRolesAndSettings = async () => {
+    try {
+      const [fetchedRoles, fetchedSettings] = await Promise.all([
+        getRolesFromApi(),
+        getSettingsFromApi()
+      ]);
+
+      setRoles(fetchedRoles);
+      if (fetchedSettings) {
+        setAppName(fetchedSettings.app_name);
+        setPaymentConfig({
+          cashEnabled: fetchedSettings.cash_enabled,
+          qrisEnabled: fetchedSettings.qris_enabled,
+          edcEnabled: fetchedSettings.edc_enabled,
+        });
+      }
+
+      // Perbarui role user aktif
+      if (currentUser) {
+        const foundRole = fetchedRoles.find((r: CustomRole) => r.id === currentUser.roleId);
+        if (foundRole) {
+          setCurrentUserRole(foundRole);
+          localStorage.setItem('pos_current_role', JSON.stringify(foundRole));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    syncRolesAndSettings();
+  }, [fetchProducts]);
 
   const hasPermission = (perm: AppPermission): boolean => {
     if (!currentUserRole) return false;
     if (currentUserRole.id === 'role-owner') return true;
-    return currentUserRole.permissions.includes(perm);
+    return currentUserRole.permissions?.includes(perm);
   };
 
-  const handleUpdateAppName = (newName: string) => {
-    const old = appName;
-    setAppName(newName);
-    pushAudit(
-      'SETTINGS', 
-      'UPDATE_STORE_SETTINGS', 
-      `Mengubah nama aplikasi/toko dari "${old}" menjadi "${newName}"`
-    );
-  };
-
-  const pushAudit = (
-    module: AuditLog['module'],
-    action: AuditLog['action'],
-    details: string,
-    actor = currentUser ? `${currentUser.name} (${currentUserRole?.name})` : 'Sistem',
-    status: AuditLog['status'] = 'AUTO_RECORDED'
-  ) => {
-    const newLog: AuditLog = {
-      id: `AUD-${Date.now().toString().slice(-4)}`,
-      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      actor,
-      user: actor,
-      module,
-      action,
-      details,
-      status
-    };
-    setAuditLogs((prev) => [newLog, ...prev]);
-  };
-
-  const handleLoginSuccess = (emp: Employee) => {
+  const handleLoginSuccess = (emp: Employee, role: any) => {
     setCurrentUser(emp);
-    const role = roles.find((r) => r.id === emp.roleId);
-    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Petugas "${emp.name}" login shift.`, emp.name, 'APPROVED');
+    setCurrentUserRole(role);
+    localStorage.setItem('pos_current_user', JSON.stringify(emp));
+    localStorage.setItem('pos_current_role', JSON.stringify(role));
 
-    if (role && !role.permissions.includes('access_dashboard')) {
+    // Kasir yang tidak punya izin dashboard langsung dialihkan ke layar POS
+    const canAccessDashboard = role?.id === 'role-owner' || role?.permissions?.includes('access_dashboard');
+    if (!canAccessDashboard) {
       setActiveMenu('pos');
     } else {
       setActiveMenu('dashboard');
@@ -154,43 +164,22 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    if (currentUser) {
-      pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Petugas "${currentUser.name}" keluar dari sistem (logout).`, currentUser.name, 'APPROVED');
-    }
     setCurrentUser(null);
+    setCurrentUserRole(undefined);
+    localStorage.removeItem('pos_current_user');
+    localStorage.removeItem('pos_current_role');
   };
 
-  const handleAddEmployee = (newEmp: Employee) => {
-    setEmployees([...employees, newEmp]);
-    const role = roles.find((r) => r.id === newEmp.roleId);
-    pushAudit('USERS_ROLES', 'CREATE_EMPLOYEE', `Mendaftarkan staf baru "${newEmp.name}" (@${newEmp.username}) dengan role: ${role?.name}`);
-  };
-
-  const handleToggleEmployeeStatus = (id: string) => {
-    const emp = employees.find((e) => e.id === id);
-    setEmployees(employees.map((e) => (e.id === id ? { ...e, isActive: !e.isActive } : e)));
-    pushAudit('USERS_ROLES', 'TOGGLE_EMPLOYEE', `Ubah status staf "${emp?.name}" -> ${!emp?.isActive ? 'AKTIF' : 'NONAKTIF'}`);
-  };
-
-  const handleAddRole = (newRole: CustomRole) => {
-    setRoles([...roles, newRole]);
-    pushAudit('USERS_ROLES', 'CREATE_ROLE', `Membuat role "${newRole.name}" dengan ${newRole.permissions.length} izin`);
-  };
-
-  const handleUpdateRolePermissions = (roleId: string, permissions: AppPermission[]) => {
-    setRoles(roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)));
-    const target = roles.find((r) => r.id === roleId);
-    pushAudit('USERS_ROLES', 'UPDATE_PERMISSIONS', `Update hak akses role "${target?.name}": total ${permissions.length} izin`);
+  const handleUpdateAppName = (newName: string) => {
+    setAppName(newName);
   };
 
   const handleUpdatePaymentConfig = (key: keyof PaymentConfig, value: boolean) => {
     setPaymentConfig((prev) => ({ ...prev, [key]: value }));
-    pushAudit('SETTINGS', 'UPDATE_PAYMENT_CONFIG', `Ubah status payment ${key} -> ${value ? 'AKTIF' : 'NONAKTIF'}`);
   };
 
   const handleAddPettyCash = (entry: PettyCashEntry) => {
     setPettyCashRecords([entry, ...pettyCashRecords]);
-    pushAudit('PETTY_CASH', entry.type === 'IN' ? 'PETTY_CASH_IN' : 'PETTY_CASH_OUT', `Kas laci Rp ${entry.amount.toLocaleString('id-ID')}: ${entry.reason}`, currentUser?.name || 'Kasir', 'APPROVED');
   };
 
   const handleAddAuditLog = (log: AuditLog) => {
@@ -301,8 +290,6 @@ export default function App() {
       }
     });
 
-    pushAudit('POS_TERMINAL', 'SALE_COMPLETED', `Transaksi ${newTx.receiptNumber} selesai (${method}) Rp ${grossAmount.toLocaleString('id-ID')}`, currentUser?.name || 'Kasir');
-
     return newTx;
   };
 
@@ -343,22 +330,18 @@ export default function App() {
       recordedBy: currentUser?.name || 'Staf'
     };
     setStockMovements([newRecord, ...stockMovements]);
-
-    pushAudit('INVENTORY', 'STOCK_MUTATION', `Penyesuaian stok ${type === 'IN' ? '+' : '-'}${quantity} untuk "${targetProduct.name}" (${barcode}). Alasan: ${reason}`);
   };
 
   if (!currentUser) {
     return (
       <LoginView
-        employees={employees}
-        roles={roles}
-        onLoginSuccess={handleLoginSuccess}
         appName={appName}
+        onLoginSuccess={handleLoginSuccess}
       />
     );
   }
 
-  const activeProductsForPos = products.filter((p) => p.isActive !== false);
+  const activeProductsForPos = (Array.isArray(products) ? products : []).filter((p) => p.isActive !== false);
 
   if (activeMenu === 'pos') {
     return (
@@ -425,7 +408,7 @@ export default function App() {
                 canEdit={hasPermission('edit_products')}
                 currentUser={currentUser}
                 currentUserRole={currentUserRole}
-                onAuditLog={pushAudit}
+                onAuditLog={() => {}}
               />
             ) : (
               <CashierWelcome 
@@ -482,14 +465,7 @@ export default function App() {
           
           {activeMenu === 'users' && (
             hasPermission('manage_employees') ? (
-              <UsersView 
-                employees={employees} 
-                roles={roles}
-                onAddEmployee={handleAddEmployee} 
-                onToggleStatus={handleToggleEmployeeStatus} 
-                onAddRole={handleAddRole}
-                onUpdateRolePermissions={handleUpdateRolePermissions}
-              />
+              <UsersView currentUserRole={currentUserRole} currentUser={currentUser} />
             ) : (
               <CashierWelcome 
                 currentUser={currentUser} 

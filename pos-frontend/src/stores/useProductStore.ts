@@ -89,8 +89,8 @@ export const useProductStore = create<ProductState>((set, get) => ({
 
       set({
         products: res.data || [],
-        totalItems: res.pagination.total_items,
-        totalPages: res.pagination.total_pages,
+        totalItems: res?.pagination?.total_items ?? (Array.isArray(res?.data) ? res.data.length : 0),
+        totalPages: res?.pagination?.total_pages ?? 1,
         isLoading: false
       });
     } catch (err: any) {

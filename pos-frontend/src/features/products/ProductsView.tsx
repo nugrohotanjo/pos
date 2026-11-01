@@ -202,18 +202,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
       {/* Tabel Data Produk */}
       <ProductTable
-        products={products}
-        isLoading={isLoading}
-        canEdit={canEdit}
-        page={page}
-        limit={limit}
-        totalItems={totalItems}
-        totalPages={totalPages}
-        onPageChange={(p) => setFilter('page', p)}
-        onEdit={(p) => setEditingProduct(p)}
-        onViewAudit={handleOpenAuditModal}
-        onToggleArchive={handleToggleArchive}
-      />
+            products={products}
+            isLoading={isLoading}
+            canEdit={canEdit}
+            page={page}
+            limit={limit}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            onPageChange={(newPage) => {
+              setFilter("page", newPage);
+            }}
+            onLimitChange={(newLimit) => {
+              setFilter("limit", newLimit);
+              setFilter("page", 1);
+            }}
+            onEdit={(p) => setEditingProduct(p)}
+            onViewAudit={(p) => setAuditProduct(p)}
+            onToggleArchive={(barcode) => toggleArchiveProduct(barcode)}
+          />
 
       {/* Dialog Modals */}
       <ProductAddModal
