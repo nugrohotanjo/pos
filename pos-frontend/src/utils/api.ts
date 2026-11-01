@@ -1,3 +1,20 @@
+
+export function getAuthHeaders(): HeadersInit {
+  let userName = "";
+  try {
+    const raw = localStorage.getItem("pos_auth_user") || localStorage.getItem("current_user");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      userName = parsed.name || parsed.username || "";
+    }
+  } catch (e) {}
+
+  return {
+    "Content-Type": "application/json",
+    ...(userName ? { "X-User-Name": userName } : {}),
+  };
+}
+
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 export interface PaginationParams {
@@ -43,7 +60,7 @@ export async function getCategoriesFromApi(): Promise<string[]> {
 export async function createProductToApi(product: any): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/products`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(product),
   });
   if (!res.ok) {
@@ -56,7 +73,7 @@ export async function createProductToApi(product: any): Promise<any> {
 export async function updateProductToApi(barcode: string, fields: any): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/products/${barcode}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(fields),
   });
   if (!res.ok) {
@@ -141,7 +158,7 @@ export async function getSettingsFromApi(): Promise<StoreSettings> {
 export async function updateSettingsToApi(data: Partial<StoreSettings> & { actor?: string }): Promise<StoreSettings> {
   const res = await fetch(`${API_BASE_URL}/settings`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -165,7 +182,7 @@ export async function getRolesFromApi(): Promise<any[]> {
 export async function createRoleToApi(data: { name: string; description: string; permissions: string[]; actor?: string }): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/roles`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -182,7 +199,7 @@ export async function createRoleToApi(data: { name: string; description: string;
 export async function updateRolePermissionsToApi(roleId: string, permissions: string[], actor?: string): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/roles/${roleId}/permissions`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ permissions, actor }),
   });
   if (!res.ok) {
@@ -210,7 +227,7 @@ export async function getEmployeesFromApi(): Promise<any[]> {
 export async function createEmployeeToApi(data: { name: string; username: string; pin: string; role_id: string; phone?: string; actor?: string }): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/employees`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -231,7 +248,7 @@ export async function toggleEmployeeStatusToApi(empId: string, actor?: string): 
 export async function loginWithApi(username: string, pin: string): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ username, pin }),
   });
   if (!res.ok) {
@@ -255,7 +272,7 @@ export async function updateEmployeeToApi(
 ): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/employees/${empId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -276,7 +293,7 @@ export async function updateRoleToApi(
 ): Promise<any> {
   const res = await fetch(`${API_BASE_URL}/roles/${roleId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) {

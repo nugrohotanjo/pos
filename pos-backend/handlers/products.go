@@ -103,7 +103,10 @@ func CreateProduct(c *gin.Context) {
 	newSnap, _ := json.Marshal(product)
 	actor := input.Actor
 	if actor == "" {
-		actor = "Petugas Gudang"
+		actor = c.GetHeader("X-User-Name")
+	}
+	if actor == "" {
+		actor = "Sistem"
 	}
 
 	config.DB.Create(&models.AuditLog{
@@ -222,11 +225,20 @@ func UpdateProduct(c *gin.Context) {
 
 	newSnap, _ := json.Marshal(newSnapMap)
 
-	actor := "Owner / Administrator"
+	actor := ""
 	if v, ok := getVal(input, "actor", "Actor", "user", "User"); ok {
 		if strVal := fmt.Sprint(v); strVal != "" {
 			actor = strVal
 		}
+	}
+	if actor == "" {
+		actor = c.GetHeader("X-User-Name")
+	}
+	if actor == "" {
+		actor = c.Query("actor")
+	}
+	if actor == "" {
+		actor = "Sistem"
 	}
 
 	config.DB.Create(&models.AuditLog{
@@ -263,7 +275,13 @@ func ToggleArchiveProduct(c *gin.Context) {
 	oldSnap, _ := json.Marshal(map[string]interface{}{"is_active": oldActive})
 	newSnap, _ := json.Marshal(map[string]interface{}{"is_active": product.IsActive})
 
-	actor := c.DefaultQuery("actor", "Petugas Gudang")
+	actor := c.GetHeader("X-User-Name")
+	if actor == "" {
+		actor = c.Query("actor")
+	}
+	if actor == "" {
+		actor = "Sistem"
+	}
 	actionName := "ARCHIVE"
 	if product.IsActive {
 		actionName = "RESTORE"
@@ -301,7 +319,13 @@ func DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	actor := c.DefaultQuery("actor", "Petugas Gudang")
+	actor := c.GetHeader("X-User-Name")
+	if actor == "" {
+		actor = c.Query("actor")
+	}
+	if actor == "" {
+		actor = "Sistem"
+	}
 	config.DB.Create(&models.AuditLog{
 		Module:    "PRODUCTS",
 		Action:    "DELETE",

@@ -82,17 +82,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     );
   };
 
-  const handleSaveEdit = async (barcode: string, updatedFields: any, reason: string) => {
-    await updateProduct(barcode, updatedFields, reason, actorLabel, (details) =>
-      onAuditLog?.('PRODUCTS', 'UPDATE_PRODUCT', details)
-    );
-  };
-
-  const handleToggleArchive = async (barcode: string) => {
+  const handleSaveEdit = async (
+    barcode: string,
+    updatedFields: any,
+    reason: string
+  ) => {
     try {
-      await toggleArchiveProduct(barcode, (action, details) => {
-        onAuditLog?.('PRODUCTS', action, details);
-      });
+      const actor = currentUser?.name || "Kasir";
+      await updateProduct(
+        barcode,
+        updatedFields,
+        reason,
+        actor,
+        (details) => onAuditLog && onAuditLog("PRODUCTS", "UPDATE", details)
+      );
     } catch (err: any) {
       alert(`Gagal ubah status arsip: ${err.message}`);
     }
@@ -218,7 +221,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             }}
             onEdit={(p) => setEditingProduct(p)}
             onViewAudit={(p) => setAuditProduct(p)}
-            onToggleArchive={(barcode) => toggleArchiveProduct(barcode)}
+            onToggleArchive={(barcode) => {
+              if (onAuditLog) {
+                toggleArchiveProduct(barcode, (action, details) => onAuditLog("PRODUCTS", action, details));
+              } else {
+                toggleArchiveProduct(barcode);
+              }
+            }}
           />
 
       {/* Dialog Modals */}

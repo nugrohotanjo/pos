@@ -112,7 +112,12 @@ export const useProductStore = create<ProductState>((set, get) => ({
   },
 
   updateProduct: async (barcode, updatedFields, reason, actorName, onAudit) => {
-    await updateProductToApi(barcode, updatedFields);
+    const payload = {
+      ...updatedFields,
+      actor: actorName,
+      reason,
+    };
+    await updateProductToApi(barcode, payload);
     if (onAudit) {
       onAudit(`Koreksi data barang (${barcode}): Alasan - ${reason}`);
     }
@@ -120,7 +125,10 @@ export const useProductStore = create<ProductState>((set, get) => ({
     await get().fetchCategories();
   },
 
-  toggleArchiveProduct: async (barcode, onAudit) => {
+  toggleArchiveProduct: async (
+    barcode: string,
+    onAudit?: (action: "ARCHIVE_PRODUCT" | "RESTORE_PRODUCT", details: string) => void
+  ) => {
     const target = get().products.find(p => p.barcode === barcode);
     const currentlyActive = target ? target.isActive !== false : true;
 
