@@ -20,6 +20,7 @@ type Employee struct {
 	RoleID    string    `json:"role_id" gorm:"column:role_id"`
 	Phone     string    `json:"phone" gorm:"column:phone"`
 	IsActive  bool      `json:"is_active" gorm:"column:is_active"`
+	TokenVersion int    `gorm:"column:token_version;default:1" json:"token_version"`
 	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at"`
 }

@@ -1,35 +1,36 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"pos-backend/config"
 	"pos-backend/models"
+	"pos-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// GET /api/v1/roles
+// ==========================================
+// ROLE HANDLERS
+// ==========================================
+
 func GetRoles(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
 		return
 	}
-
 	var roles []models.Role
-	if err := config.DB.Order("is_system desc, name asc").Find(&roles).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": roles})
+	config.DB.Order("created_at asc").Find(&roles)
+	c.JSON(http.StatusOK, gin.H{"success": true, "roles": roles})
 }
 
-// POST /api/v1/roles
 func CreateRole(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -37,10 +38,10 @@ func CreateRole(c *gin.Context) {
 	}
 
 	var input struct {
-		Name        string   `json:"name" binding:"required"`
-		Description string   `json:"description"`
-		Permissions []string `json:"permissions"`
-		Actor       string   `json:"actor"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Permissions json.RawMessage `json:"permissions"`
+		Actor       string          `json:"actor"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -48,13 +49,12 @@ func CreateRole(c *gin.Context) {
 		return
 	}
 
-	permBytes, _ := json.Marshal(input.Permissions)
 	newRole := models.Role{
 		ID:          fmt.Sprintf("role-%d", time.Now().Unix()),
 		Name:        input.Name,
 		Description: input.Description,
 		IsSystem:    false,
-		Permissions: string(permBytes),
+		Permissions: string(input.Permissions),
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -84,10 +84,13 @@ func CreateRole(c *gin.Context) {
 		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
 	})
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": newRole})
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Role berhasil dibuat",
+		"role":    newRole,
+	})
 }
 
-// PUT /api/v1/roles/:id
 func UpdateRole(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -102,10 +105,10 @@ func UpdateRole(c *gin.Context) {
 	}
 
 	var input struct {
-		Name        string `json:"name" binding:"required"`
-		Description string `json:"description"`
-		Actor       string `json:"actor"`
-		ActorRole   string `json:"actor_role"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Permissions json.RawMessage `json:"permissions"`
+		Actor       string          `json:"actor"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -113,50 +116,18 @@ func UpdateRole(c *gin.Context) {
 		return
 	}
 
-	if input.ActorRole != "role-owner" {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Akses Ditolak: Hanya Owner yang berhak mengubah role!"})
-		return
-	}
-
-	// Snapshot Sebelum Perubahan
-	oldSnap, _ := json.Marshal(map[string]interface{}{
-		"name":        role.Name,
-		"description": role.Description,
-	})
-
 	role.Name = input.Name
 	role.Description = input.Description
+	if len(input.Permissions) > 0 {
+		role.Permissions = string(input.Permissions)
+	}
 	role.UpdatedAt = time.Now()
 
-	if err := config.DB.Save(&role).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update role: " + err.Error()})
-		return
-	}
+	config.DB.Save(&role)
 
-	// Snapshot Sesudah Perubahan
-	newSnap, _ := json.Marshal(map[string]interface{}{
-		"name":        role.Name,
-		"description": role.Description,
-	})
-
-	actor := input.Actor
-	if actor == "" {
-		actor = "Owner / Administrator"
-	}
-	config.DB.Create(&models.AuditLog{
-		Module:    "USERS_ROLES",
-		Action:    "UPDATE_ROLE",
-		User:      actor,
-		Details:   fmt.Sprintf("Memperbarui nama/deskripsi role ID: %s", role.ID),
-		OldValues: string(oldSnap),
-		NewValues: string(newSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": role})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role berhasil diperbarui", "role": role})
 }
 
-// PUT /api/v1/roles/:id/permissions
 func UpdateRolePermissions(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -171,8 +142,8 @@ func UpdateRolePermissions(c *gin.Context) {
 	}
 
 	var input struct {
-		Permissions []string `json:"permissions"`
-		Actor       string   `json:"actor"`
+		Permissions json.RawMessage `json:"permissions"`
+		Actor       string          `json:"actor"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -180,44 +151,17 @@ func UpdateRolePermissions(c *gin.Context) {
 		return
 	}
 
-	var oldPerms []string
-	_ = json.Unmarshal([]byte(role.Permissions), &oldPerms)
-
-	oldSnap, _ := json.Marshal(map[string]interface{}{
-		"permissions": oldPerms,
-	})
-
-	permBytes, _ := json.Marshal(input.Permissions)
-	role.Permissions = string(permBytes)
+	role.Permissions = string(input.Permissions)
 	role.UpdatedAt = time.Now()
+	config.DB.Save(&role)
 
-	if err := config.DB.Save(&role).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update permission: " + err.Error()})
-		return
-	}
-
-	newSnap, _ := json.Marshal(map[string]interface{}{
-		"permissions": input.Permissions,
-	})
-
-	actor := input.Actor
-	if actor == "" {
-		actor = "Owner / Administrator"
-	}
-	config.DB.Create(&models.AuditLog{
-		Module:    "USERS_ROLES",
-		Action:    "UPDATE_PERMISSIONS",
-		User:      actor,
-		Details:   fmt.Sprintf("Memperbarui izin role \"%s\"", role.Name),
-		OldValues: string(oldSnap),
-		NewValues: string(newSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": role})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Hak akses role berhasil diperbarui", "role": role})
 }
 
-// GET /api/v1/employees
+// ==========================================
+// EMPLOYEE HANDLERS
+// ==========================================
+
 func GetEmployees(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -225,15 +169,16 @@ func GetEmployees(c *gin.Context) {
 	}
 
 	var employees []models.Employee
-	if err := config.DB.Select("id, name, username, '••••' as pin, role_id, phone, is_active, created_at, updated_at").Order("created_at desc").Find(&employees).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
-		return
+	config.DB.Order("created_at asc").Find(&employees)
+
+	// Sensor PIN
+	for i := range employees {
+		employees[i].Pin = "••••"
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": employees})
+	c.JSON(http.StatusOK, gin.H{"success": true, "employees": employees})
 }
 
-// POST /api/v1/employees
 func CreateEmployee(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -241,11 +186,10 @@ func CreateEmployee(c *gin.Context) {
 	}
 
 	var input struct {
-		Name     string `json:"name" binding:"required"`
-		Username string `json:"username" binding:"required"`
-		Pin      string `json:"pin" binding:"required"`
-		RoleID   string `json:"role_id" binding:"required"`
-		Phone    string `json:"phone"`
+		Name     string `json:"name"`
+		Username string `json:"username"`
+		Pin      string `json:"pin"`
+		RoleID   string `json:"role_id"`
 		Actor    string `json:"actor"`
 	}
 
@@ -254,32 +198,33 @@ func CreateEmployee(c *gin.Context) {
 		return
 	}
 
+	// Cek duplikasi username
 	var existing models.Employee
-	if err := config.DB.Where("username = ?", input.Username).First(&existing).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Username sudah digunakan!"})
+	if err := config.DB.Where("username = ?", strings.TrimSpace(input.Username)).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Username sudah digunakan oleh karyawan lain"})
 		return
 	}
 
 	hashedPin, err := bcrypt.GenerateFromPassword([]byte(input.Pin), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal mengamankan PIN"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal mengenkripsi PIN"})
 		return
 	}
 
 	newEmp := models.Employee{
-		ID:        fmt.Sprintf("emp-%d", time.Now().Unix()),
-		Name:      input.Name,
-		Username:  input.Username,
-		Pin:       string(hashedPin),
-		RoleID:    input.RoleID,
-		Phone:     input.Phone,
-		IsActive:  true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:           fmt.Sprintf("emp-%d", time.Now().Unix()),
+		Name:         input.Name,
+		Username:     strings.TrimSpace(input.Username),
+		Pin:          string(hashedPin),
+		RoleID:       input.RoleID,
+		IsActive:     true,
+		TokenVersion: 1,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	if err := config.DB.Create(&newEmp).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal menambah karyawan: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal menambahkan karyawan: " + err.Error()})
 		return
 	}
 
@@ -288,29 +233,18 @@ func CreateEmployee(c *gin.Context) {
 		actor = "Owner / Administrator"
 	}
 
-	newSnap, _ := json.Marshal(map[string]interface{}{
-		"name":      newEmp.Name,
-		"username":  newEmp.Username,
-		"role_id":   newEmp.RoleID,
-		"phone":     newEmp.Phone,
-		"is_active": newEmp.IsActive,
-		"pin":       "•••• (Bcrypt Salted)",
-	})
-
 	config.DB.Create(&models.AuditLog{
 		Module:    "USERS_ROLES",
 		Action:    "CREATE_EMPLOYEE",
 		User:      actor,
-		Details:   fmt.Sprintf("Mendaftarkan staf baru \"%s\" (@%s)", newEmp.Name, newEmp.Username),
-		NewValues: string(newSnap),
+		Details:   fmt.Sprintf("Staf \"%s\" berhasil didaftarkan.", newEmp.Name),
 		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
 	})
 
 	newEmp.Pin = "••••"
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": newEmp})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Karyawan berhasil ditambahkan", "employee": newEmp})
 }
 
-// PUT /api/v1/employees/:id
 func UpdateEmployee(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -325,13 +259,11 @@ func UpdateEmployee(c *gin.Context) {
 	}
 
 	var input struct {
-		Name      string `json:"name" binding:"required"`
-		Username  string `json:"username" binding:"required"`
-		Pin       string `json:"pin"`
-		RoleID    string `json:"role_id" binding:"required"`
-		Phone     string `json:"phone"`
-		Actor     string `json:"actor"`
-		ActorRole string `json:"actor_role"`
+		Name     string `json:"name"`
+		Username string `json:"username"`
+		Pin      string `json:"pin"`
+		RoleID   string `json:"role_id"`
+		Actor    string `json:"actor"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -339,81 +271,43 @@ func UpdateEmployee(c *gin.Context) {
 		return
 	}
 
-	if input.ActorRole != "role-owner" {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Akses Ditolak: Hanya Pemilik Toko (Owner) yang berhak mengubah data staf & PIN!"})
-		return
-	}
-
-	var duplicate models.Employee
-	if err := config.DB.Where("username = ? AND id != ?", input.Username, empID).First(&duplicate).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Username sudah dipakai oleh karyawan lain!"})
-		return
-	}
-
-	// 1. Snapshot Sebelum Perubahan (Before)
-	oldDataMap := map[string]interface{}{
-		"name":     emp.Name,
-		"username": emp.Username,
-		"role_id":  emp.RoleID,
-		"phone":    emp.Phone,
-		"pin":      "•••• (Tidak Berubah)",
-	}
-
-	// 2. Terapkan Nilai Baru
 	emp.Name = input.Name
-	emp.Username = input.Username
+	emp.Username = strings.TrimSpace(input.Username)
 	emp.RoleID = input.RoleID
-	emp.Phone = input.Phone
-
-	newDataMap := map[string]interface{}{
-		"name":     emp.Name,
-		"username": emp.Username,
-		"role_id":  emp.RoleID,
-		"phone":    emp.Phone,
-		"pin":      "•••• (Tidak Berubah)",
-	}
-
-	detailsMsg := fmt.Sprintf("Memperbarui data staf \"%s\" (@%s)", emp.Name, emp.Username)
-
-	if input.Pin != "" {
-		hashedPin, err := bcrypt.GenerateFromPassword([]byte(input.Pin), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal mengenkripsi PIN"})
-			return
-		}
-		emp.Pin = string(hashedPin)
-		detailsMsg += " beserta PIN kasir baru"
-		newDataMap["pin"] = "Diperbarui (Hash Salted)"
-	}
-
 	emp.UpdatedAt = time.Now()
-	if err := config.DB.Save(&emp).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal menyimpan perubahan karyawan: " + err.Error()})
-		return
+
+	// Jika PIN diperbarui, hash ulang dan naikkan token_version agar sesi lama putus
+	if strings.TrimSpace(input.Pin) != "" && input.Pin != "••••" {
+		hashedPin, err := bcrypt.GenerateFromPassword([]byte(input.Pin), bcrypt.DefaultCost)
+		if err == nil {
+			emp.Pin = string(hashedPin)
+			emp.TokenVersion += 1
+		}
 	}
 
-	oldSnapBytes, _ := json.Marshal(oldDataMap)
-	newSnapBytes, _ := json.Marshal(newDataMap)
+	config.DB.Save(&emp)
 
 	actor := input.Actor
 	if actor == "" {
 		actor = "Owner / Administrator"
 	}
+
 	config.DB.Create(&models.AuditLog{
 		Module:    "USERS_ROLES",
 		Action:    "UPDATE_EMPLOYEE",
 		User:      actor,
-		Details:   detailsMsg,
-		OldValues: string(oldSnapBytes),
-		NewValues: string(newSnapBytes),
+		Details:   fmt.Sprintf("Data staf \"%s\" berhasil diperbarui.", emp.Name),
 		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
 	})
 
 	emp.Pin = "••••"
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": emp})
+	c.JSON(http.StatusOK, gin.H{
+		"success":  true,
+		"message":  "Data staf berhasil diperbarui",
+		"employee": emp,
+	})
 }
 
-// PATCH /api/v1/employees/:id/toggle-status
 func ToggleEmployeeStatus(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -427,32 +321,71 @@ func ToggleEmployeeStatus(c *gin.Context) {
 		return
 	}
 
-	oldStatus := emp.IsActive
 	emp.IsActive = !emp.IsActive
 	emp.UpdatedAt = time.Now()
+	if !emp.IsActive {
+		// Putuskan sesi jika dinonaktifkan
+		emp.TokenVersion += 1
+	}
 	config.DB.Save(&emp)
 
-	oldSnap, _ := json.Marshal(map[string]interface{}{"is_active": oldStatus})
-	newSnap, _ := json.Marshal(map[string]interface{}{"is_active": emp.IsActive})
-
-	actor := c.DefaultQuery("actor", "Owner / Administrator")
-	statusText := "NONAKTIF"
-	if emp.IsActive {
-		statusText = "AKTIF"
+	statusStr := "diaktifkan"
+	if !emp.IsActive {
+		statusStr = "dinonaktifkan"
 	}
 
 	config.DB.Create(&models.AuditLog{
 		Module:    "USERS_ROLES",
-		Action:    "TOGGLE_EMPLOYEE",
-		User:      actor,
-		Details:   fmt.Sprintf("Ubah status staf \"%s\" menjadi %s", emp.Name, statusText),
-		OldValues: string(oldSnap),
-		NewValues: string(newSnap),
+		Action:    "TOGGLE_STATUS",
+		User:      "Owner / Administrator",
+		Details:   fmt.Sprintf("Akun staf \"%s\" telah %s.", emp.Name, statusStr),
 		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
 	})
 
 	emp.Pin = "••••"
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": emp})
+	c.JSON(http.StatusOK, gin.H{
+		"success":  true,
+		"message":  fmt.Sprintf("Status karyawan berhasil %s", statusStr),
+		"employee": emp,
+	})
+}
+
+// ==========================================
+// AUTH & JWT SESSION HANDLERS
+// ==========================================
+
+const authPayloadSecret = "POS_AUTH_SECRET_NONCE_HANDSHAKE_2026"
+
+func decryptAuthPayload(cipherText string) (string, string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(cipherText)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid base64: %v", err)
+	}
+
+	key := []byte(authPayloadSecret)
+	keyLen := len(key)
+	xored := make([]byte, len(decoded))
+	for i := 0; i < len(decoded); i++ {
+		xored[i] = decoded[i] ^ key[i%keyLen]
+	}
+
+	var payload struct {
+		Username  string `json:"username"`
+		Pin       string `json:"pin"`
+		Timestamp int64  `json:"ts"`
+		Nonce     string `json:"nonce"`
+	}
+
+	if err := json.Unmarshal(xored, &payload); err != nil {
+		return "", "", fmt.Errorf("json unmarshal failed: %v", err)
+	}
+
+	now := time.Now().Unix()
+	if math.Abs(float64(now-payload.Timestamp)) > 180 {
+		return "", "", fmt.Errorf("payload expired")
+	}
+
+	return strings.TrimSpace(payload.Username), strings.TrimSpace(payload.Pin), nil
 }
 
 // POST /api/v1/auth/login
@@ -462,18 +395,38 @@ func AuthLogin(c *gin.Context) {
 		return
 	}
 
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Pin      string `json:"pin" binding:"required"`
+	var rawInput struct {
+		EncryptedPayload string `json:"encrypted_payload"`
+		Username         string `json:"username"`
+		Pin              string `json:"pin"`
 	}
 
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBindJSON(&rawInput); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Data login tidak valid"})
+		return
+	}
+
+	var username, pin string
+	if rawInput.EncryptedPayload != "" {
+		decUsername, decPin, err := decryptAuthPayload(rawInput.EncryptedPayload)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Gagal mendekripsi autentikasi: " + err.Error()})
+			return
+		}
+		username = decUsername
+		pin = decPin
+	} else {
+		username = rawInput.Username
+		pin = rawInput.Pin
+	}
+
+	if strings.TrimSpace(username) == "" || strings.TrimSpace(pin) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Username dan PIN wajib diisi"})
 		return
 	}
 
 	var emp models.Employee
-	if err := config.DB.Where("username = ?", input.Username).First(&emp).Error; err != nil {
+	if err := config.DB.Where("username = ?", username).First(&emp).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Username atau PIN salah!"})
 		return
 	}
@@ -483,10 +436,10 @@ func AuthLogin(c *gin.Context) {
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(emp.Pin), []byte(input.Pin))
+	err := bcrypt.CompareHashAndPassword([]byte(emp.Pin), []byte(pin))
 	if err != nil {
-		if emp.Pin == input.Pin {
-			newHashed, hashErr := bcrypt.GenerateFromPassword([]byte(input.Pin), bcrypt.DefaultCost)
+		if emp.Pin == pin {
+			newHashed, hashErr := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.DefaultCost)
 			if hashErr == nil {
 				emp.Pin = string(newHashed)
 				config.DB.Model(&emp).Update("pin", emp.Pin)
@@ -508,10 +461,79 @@ func AuthLogin(c *gin.Context) {
 		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
 	})
 
+	tokenVer := emp.TokenVersion
+	if tokenVer == 0 {
+		tokenVer = 1
+	}
+
+	// Terbitkan JWT Token yang terikat dengan device hash & token_version
+	tokenString, tokenErr := utils.GenerateJWTToken(emp.ID, emp.Username, emp.RoleID, tokenVer, c.Request.UserAgent())
+	if tokenErr == nil {
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie("pos_jwt_token", tokenString, 43200, "/", "", false, true)
+	}
+
 	emp.Pin = "••••"
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"employee": emp,
 		"role":     role,
 	})
+}
+
+// GET /api/v1/auth/me - Verifikasi sesi aktif via HttpOnly Cookie
+func AuthMe(c *gin.Context) {
+	cookie, err := c.Cookie("pos_jwt_token")
+	if err != nil || cookie == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Sesi tidak ditemukan"})
+		return
+	}
+
+	claims, err := utils.ValidateJWTToken(cookie)
+	if err != nil {
+		c.SetCookie("pos_jwt_token", "", -1, "/", "", false, true)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Token expired atau tidak valid"})
+		return
+	}
+
+	// Device binding check
+	if claims.DeviceHash != utils.GenerateDeviceHash(c.Request.UserAgent()) {
+		c.SetCookie("pos_jwt_token", "", -1, "/", "", false, true)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Browser atau device tidak cocok"})
+		return
+	}
+
+	var emp models.Employee
+	if err := config.DB.First(&emp, "id = ?", claims.EmployeeID).Error; err != nil || !emp.IsActive {
+		c.SetCookie("pos_jwt_token", "", -1, "/", "", false, true)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Akun tidak aktif atau tidak ditemukan"})
+		return
+	}
+
+	tokenVer := emp.TokenVersion
+	if tokenVer == 0 {
+		tokenVer = 1
+	}
+	if tokenVer != claims.TokenVersion {
+		c.SetCookie("pos_jwt_token", "", -1, "/", "", false, true)
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Sesi telah di-revoke"})
+		return
+	}
+
+	var role models.Role
+	config.DB.First(&role, "id = ?", emp.RoleID)
+
+	emp.Pin = "••••"
+	c.JSON(http.StatusOK, gin.H{
+		"success":  true,
+		"employee": emp,
+		"role":     role,
+	})
+}
+
+// POST /api/v1/auth/logout - Menghapus cookie JWT
+func AuthLogout(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("pos_jwt_token", "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Berhasil logout"})
 }

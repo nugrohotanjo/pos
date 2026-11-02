@@ -13,6 +13,7 @@ import (
 )
 
 type DataTablesOptions struct {
+	Preloads     []string          // Relasi GORM yang wajib di-preload
 	SearchFields []string          // Kolom pencarian (?search=)
 	FilterFields map[string]string // Mapping query param -> kolom db
 	DateField    string            // Nama kolom datetime untuk daterange (misal: "created_at")
@@ -59,15 +60,15 @@ func PaginateAndFilter(c *gin.Context, db *gorm.DB, model interface{}, result in
 			} else if val == "ARCHIVED" || val == "INACTIVE" {
 				query = query.Where(dbColumn+" = ?", false)
 			} else {
-				if dbColumn == "category" {
-								if _, err := strconv.Atoi(val); err == nil {
-									query = query.Where("category_id = ?", val)
-								} else {
-									query = query.Where("LOWER(category) = LOWER(?)", val)
-								}
-							} else {
-								query = query.Where(dbColumn + " = ?", val)
-							}
+				if dbColumn == "category" || dbColumn == "category_id" || paramKey == "category" {
+						if _, err := strconv.Atoi(val); err == nil {
+							query = query.Where("category_id = ?", val)
+						} else {
+							query = query.Where("category_id IN (SELECT id FROM categories WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) OR LOWER(TRIM(slug)) = LOWER(TRIM(?)))", val, val)
+						}
+					} else {
+						query = query.Where(dbColumn + " = ?", val)
+					}
 			}
 		}
 	}
@@ -114,7 +115,11 @@ func PaginateAndFilter(c *gin.Context, db *gorm.DB, model interface{}, result in
 
 	// 6. Pagination Offset & Limit
 	offset := (page - 1) * limit
-	if err := query.Offset(offset).Limit(limit).Find(result).Error; err != nil {
+	findQuery := query.Offset(offset).Limit(limit)
+	for _, preload := range opts.Preloads {
+		findQuery = findQuery.Preload(preload)
+	}
+	if err := findQuery.Find(result).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return err
 	}

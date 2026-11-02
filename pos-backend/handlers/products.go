@@ -48,9 +48,10 @@ func GetProducts(c *gin.Context) {
 
 	var products []models.Product
 	_ = utils.PaginateAndFilter(c, config.DB, &models.Product{}, &products, utils.DataTablesOptions{
+		Preloads: []string{"CategoryRef"},
 		SearchFields: []string{"name", "barcode"},
 		FilterFields: map[string]string{
-			"category": "category",
+			"category": "category_id",
 			"status":   "is_active",
 		},
 		DefaultOrder: "created_at desc",
@@ -66,7 +67,8 @@ func CreateProduct(c *gin.Context) {
 	var input struct {
 		Barcode       string `json:"barcode" binding:"required"`
 		Name          string `json:"name" binding:"required"`
-		Category      string `json:"category" binding:"required"`
+		Category      string `json:"category"`
+		CategoryID    *uint  `json:"category_id"`
 		Price         int    `json:"price" binding:"required"`
 		CostPrice     int    `json:"cost_price"`
 		Stock         int    `json:"stock"`
@@ -84,16 +86,23 @@ func CreateProduct(c *gin.Context) {
 	product := models.Product{
 		Barcode:       input.Barcode,
 		Name:          input.Name,
-		Category:      input.Category,
-		Price:         input.Price,
+				Price:         input.Price,
 		CostPrice:     input.CostPrice,
 		Stock:         input.Stock,
 		Unit:          input.Unit,
 		MinStock:      input.MinStock,
 		ShelfLocation: input.ShelfLocation,
+		CategoryID:    input.CategoryID,
 		IsActive:      true,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
+	}
+
+		if product.CategoryID == nil && input.Category != "" {
+		var cat models.Category
+		if err := config.DB.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", input.Category).First(&cat).Error; err == nil {
+			product.CategoryID = &cat.ID
+		}
 	}
 
 	if err := config.DB.Create(&product).Error; err != nil {
@@ -180,18 +189,12 @@ func UpdateProduct(c *gin.Context) {
 		if n, valid := toInt(v); valid && n > 0 {
 			cid := uint(n)
 			product.CategoryID = &cid
-			var cat models.Category
-			if err := config.DB.First(&cat, cid).Error; err == nil {
-				product.Category = cat.Name
-			}
 		}
 	} else if v, ok := getVal(input, "category", "Category"); ok {
 		if str := fmt.Sprint(v); str != "" {
-			product.Category = str
 			var cat models.Category
 			if err := config.DB.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", str).First(&cat).Error; err == nil {
 				product.CategoryID = &cat.ID
-				product.Category = cat.Name
 			}
 		}
 	}

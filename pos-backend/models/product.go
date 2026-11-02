@@ -6,7 +6,6 @@ type Product struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	Barcode       string    `json:"barcode" gorm:"uniqueIndex;not null"`
 	Name          string    `json:"name" gorm:"not null"`
-	Category      string    `gorm:"type:varchar(100)" json:"category"`
 	CategoryID    *uint     `gorm:"index" json:"category_id,omitempty"`
 	CategoryRef   *Category `gorm:"foreignKey:CategoryID" json:"category_ref,omitempty"`
 	Brand         string    `gorm:"type:varchar(100);default:'Tidak Ada Merk'" json:"brand"`
@@ -20,7 +19,6 @@ type Product struct {
 	ShelfLocation string    `json:"shelf_location"`
 	IsActive      bool      `json:"is_active" gorm:"default:true"`
 	OriginalPrice int       `json:"original_price"`
-	Tag           string    `json:"tag"`
 	StockNote     string    `json:"stock_note"`
 		Dimension     string    `gorm:"type:varchar(50)" json:"dimension,omitempty"`
 	Origin        string    `gorm:"type:varchar(100)" json:"origin,omitempty"`
@@ -35,7 +33,8 @@ type Product struct {
 type ProductRequest struct {
 	Barcode       string `json:"barcode" binding:"required"`
 	Name          string `json:"name" binding:"required"`
-	Category      string `json:"category" binding:"required"`
+	Category       string `json:"category"`
+	CategoryID     *uint  `json:"category_id"`
 	Price         int    `json:"price" binding:"required"`
 	CostPrice     int    `json:"cost_price"`
 	Stock         int    `json:"stock"`
@@ -43,7 +42,6 @@ type ProductRequest struct {
 	Unit          string `json:"unit"`
 	ShelfLocation string `json:"shelf_location"`
 	OriginalPrice int    `json:"original_price"`
-	Tag           string `json:"tag"`
 	StockNote     string `json:"stock_note"`
 	Brand         string `json:"brand" binding:"required"`
 	BrandID       *uint  `json:"brand_id"`

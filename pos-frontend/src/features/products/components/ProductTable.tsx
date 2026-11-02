@@ -54,7 +54,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
       render: (p) => (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">
           <Tag size={12} className="text-slate-400" />
-          {p.category || '-'}
+          {(p as any).category_ref?.name || (typeof p.category === "object" ? (p.category as any)?.name : p.category) || "-"}
         </span>
       ),
     },

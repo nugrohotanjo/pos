@@ -212,9 +212,8 @@ func UpdateCategory(c *gin.Context) {
 	if oldName != "" && oldName != cat.Name {
 		// Update berdasarkan category_id ATAU nama lama (case-insensitive)
 		db.Model(&models.Product{}).
-			Where("category_id = ? OR LOWER(category) = LOWER(?)", cat.ID, oldName).
+			Where("category_id = ?", cat.ID).
 			Updates(map[string]interface{}{
-				"category":    cat.Name,
 				"category_id": cat.ID,
 			})
 	}

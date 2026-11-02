@@ -26,7 +26,8 @@ import {
 } from './data/initialData';
 
 import { useProductStore } from './stores/useProductStore';
-import { getSettingsFromApi, getRolesFromApi } from './utils/api';
+import { getSettingsFromApi, getRolesFromApi, checkSessionFromApi, logoutWithApi } from './utils/api';
+import { saveEncryptedUserRole, getDecryptedUserRole, clearEncryptedUserRole } from './utils/secureSession';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { CashierWelcome } from './components/layout/CashierWelcome';
@@ -49,14 +50,24 @@ export default function App() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
-    const saved = localStorage.getItem('pos_current_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = sessionStorage.getItem('pos_current_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    // Bersihkan legacy localStorage jika ada
+    localStorage.removeItem('pos_current_user');
+    return null;
   });
 
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [currentUserRole, setCurrentUserRole] = useState<CustomRole | undefined>(() => {
-    const saved = localStorage.getItem('pos_current_role');
-    return saved ? JSON.parse(saved) : undefined;
+    try {
+      const savedUser = sessionStorage.getItem('pos_current_user');
+      const userId = savedUser ? (JSON.parse(savedUser)?.id || 'user') : 'user';
+      const decrypted = getDecryptedUserRole(userId);
+      if (decrypted) return decrypted as CustomRole;
+    } catch (e) {}
+    return undefined;
   });
 
   const [lang, setLang] = useState<Language>('id');
@@ -109,12 +120,8 @@ export default function App() {
   // Sinkronisasi Roles & Settings dari PostgreSQL
   const syncRolesAndSettings = async () => {
     try {
-      const [fetchedRoles, fetchedSettings] = await Promise.all([
-        getRolesFromApi(),
-        getSettingsFromApi()
-      ]);
-
-      setRoles(fetchedRoles);
+      // 1. Settings (sudah ter-cache via sessionStorage di api.ts)
+      const fetchedSettings = await getSettingsFromApi();
       if (fetchedSettings) {
         setAppName(fetchedSettings.app_name);
         setPaymentConfig({
@@ -124,21 +131,69 @@ export default function App() {
         });
       }
 
-      // Perbarui role user aktif
-      if (currentUser) {
+      // 2. Roles: Hanya fetch jika role/permissions user aktif belum ada di session
+      const userId = currentUser?.id || 'user';
+      const existingDecryptedRole = getDecryptedUserRole(userId);
+
+      if (!existingDecryptedRole && currentUser) {
+        const fetchedRoles = await getRolesFromApi();
+        setRoles(fetchedRoles);
         const foundRole = fetchedRoles.find((r: CustomRole) => r.id === currentUser.roleId);
         if (foundRole) {
           setCurrentUserRole(foundRole);
-          localStorage.setItem('pos_current_role', JSON.stringify(foundRole));
+          saveEncryptedUserRole(foundRole, userId);
         }
+      } else if (existingDecryptedRole) {
+        setCurrentUserRole(existingDecryptedRole as CustomRole);
       }
     } catch (err) {
       console.error(err);
     }
   };
 
+    // Auto-Logout Guard: Pantau keberadaan session secara berkala & saat window focus
+  useEffect(() => {
+    const checkSessionValidity = () => {
+      const activeUser = sessionStorage.getItem('pos_current_user');
+      const activeRole = getDecryptedUserRole(currentUser?.id || 'user');
+      
+      // Jika di state React masih login tapi session di browser hilang -> trigger logout
+      if (currentUser && (!activeUser || !activeRole)) {
+        console.warn('[SessionGuard] Sesi telah berakhir atau dihapus. Mengalihkan ke login...');
+        handleLogout();
+      }
+    };
+
+    window.addEventListener('focus', checkSessionValidity);
+    const intervalId = setInterval(checkSessionValidity, 2500);
+
+    return () => {
+      window.removeEventListener('focus', checkSessionValidity);
+      clearInterval(intervalId);
+    };
+  }, [currentUser]);
+
   useEffect(() => {
     syncRolesAndSettings();
+    // Validasi sesi JWT ke server backend
+    const verifyServerSession = async () => {
+      try {
+        const session = await checkSessionFromApi();
+        if (session.employee) {
+          setCurrentUser(session.employee);
+          if (session.role) {
+            setCurrentUserRole(session.role);
+            saveEncryptedUserRole(session.role, session.employee.id);
+          }
+        }
+      } catch (err) {
+        // Jika token JWT tidak valid di server, logout
+        if (currentUser) {
+          handleLogout();
+        }
+      }
+    };
+    verifyServerSession();
   }, []);
 
   const hasPermission = (perm: AppPermission): boolean => {
@@ -150,8 +205,12 @@ export default function App() {
   const handleLoginSuccess = (emp: Employee, role: any) => {
     setCurrentUser(emp);
     setCurrentUserRole(role);
-    localStorage.setItem('pos_current_user', JSON.stringify(emp));
-    localStorage.setItem('pos_current_role', JSON.stringify(role));
+    sessionStorage.setItem('pos_current_user', JSON.stringify(emp));
+    saveEncryptedUserRole(role, emp.id);
+
+    // Bersihkan data lama di localStorage
+    localStorage.removeItem('pos_current_user');
+    localStorage.removeItem('pos_current_role');
 
     // Kasir yang tidak punya izin dashboard langsung dialihkan ke layar POS
     const canAccessDashboard = role?.id === 'role-owner' || role?.permissions?.includes('access_dashboard');
@@ -163,8 +222,12 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logoutWithApi();
     setCurrentUser(null);
     setCurrentUserRole(undefined);
+    sessionStorage.removeItem('pos_current_user');
+    sessionStorage.removeItem('pos_settings_cache');
+    clearEncryptedUserRole();
     localStorage.removeItem('pos_current_user');
     localStorage.removeItem('pos_current_role');
   };

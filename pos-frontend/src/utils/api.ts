@@ -1,3 +1,31 @@
+
+const AUTH_PAYLOAD_SECRET = "POS_AUTH_SECRET_NONCE_HANDSHAKE_2026";
+
+function encryptLoginPayload(username: string, pin: string): string {
+  const payloadObj = {
+    username: username.trim(),
+    pin: pin.trim(),
+    ts: Math.floor(Date.now() / 1000),
+    nonce: Math.random().toString(36).substring(2, 10),
+  };
+
+  const jsonStr = JSON.stringify(payloadObj);
+  const encoder = new TextEncoder();
+  const textBytes = encoder.encode(jsonStr);
+  const keyBytes = encoder.encode(AUTH_PAYLOAD_SECRET);
+
+  const xored = new Uint8Array(textBytes.length);
+  for (let i = 0; i < textBytes.length; i++) {
+    xored[i] = textBytes[i] ^ keyBytes[i % keyBytes.length];
+  }
+
+  let binary = "";
+  for (let i = 0; i < xored.length; i++) {
+    binary += String.fromCharCode(xored[i]);
+  }
+  return btoa(binary);
+}
+
 export function getAuthHeaders(): HeadersInit {
   let userName = "";
   try {
@@ -15,6 +43,45 @@ export function getAuthHeaders(): HeadersInit {
 }
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
+
+// Centralized Best-Practice Fetch Client (OWASP Compliant)
+// 1. Otomatis menyertakan HttpOnly Cookie via credentials: 'include'
+// 2. Interceptor terpusat untuk menangani 401 (Session Expired/Revoked)
+export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const defaultHeaders: Record<string, string> = {
+    'Accept': 'application/json',
+  };
+
+  if (init.body && !(init.body instanceof FormData)) {
+    defaultHeaders['Content-Type'] = 'application/json';
+  }
+
+  const config: RequestInit = {
+    ...init,
+    credentials: 'include', // Kunci keamanan: Cookie HttpOnly selalu dikirim
+    headers: {
+      ...defaultHeaders,
+      ...init.headers,
+    },
+  };
+
+  const response = await window.fetch(input, config);
+
+  // Auto-handling session expiry / token invalidation
+  if (response.status === 401) {
+    const isLoginEndpoint = typeof input === 'string' && input.includes('/auth/login');
+    if (!isLoginEndpoint) {
+      // Bersihkan state login jika ada di storage
+      localStorage.removeItem('current_employee');
+      localStorage.removeItem('current_role');
+      // Trigger event atau redirect jika sesi mati
+      window.dispatchEvent(new CustomEvent('pos:session-expired'));
+    }
+  }
+
+  return response;
+}
+
 
 export interface PaginationParams {
   page: number;
@@ -46,13 +113,13 @@ export async function getProductsServerSide(params: PaginationParams): Promise<P
     status: params.status || 'ACTIVE'
   });
 
-  const res = await fetch(`${API_BASE_URL}/products?${query.toString()}`);
+  const res = await apiFetch(`${API_BASE_URL}/products?${query.toString()}`);
   if (!res.ok) throw new Error('Gagal mengambil data produk dari server');
   return res.json();
 }
 
 export async function getCategoriesFromApi(): Promise<any[]> {
-  const res = await fetch(`${API_BASE_URL}/categories?all=true`);
+  const res = await apiFetch(`${API_BASE_URL}/categories?all=true`);
   if (!res.ok) return [];
   const result = await res.json();
   const list = result.data || [];
@@ -60,7 +127,7 @@ export async function getCategoriesFromApi(): Promise<any[]> {
 }
 
 export async function createProductToApi(product: any): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/products`, {
+  const res = await apiFetch(`${API_BASE_URL}/products`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(product),
@@ -73,7 +140,7 @@ export async function createProductToApi(product: any): Promise<any> {
 }
 
 export async function updateProductToApi(barcode: string, fields: any): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/products/${barcode}`, {
+  const res = await apiFetch(`${API_BASE_URL}/products/${barcode}`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(fields),
@@ -86,7 +153,7 @@ export async function updateProductToApi(barcode: string, fields: any): Promise<
 }
 
 export async function toggleArchiveProductToApi(barcode: string): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/products/${barcode}/archive`, {
+  const res = await apiFetch(`${API_BASE_URL}/products/${barcode}/archive`, {
     method: 'PATCH',
   });
   if (!res.ok) {
@@ -97,7 +164,7 @@ export async function toggleArchiveProductToApi(barcode: string): Promise<any> {
 }
 
 export async function getProductAuditLogsFromApi(barcode: string): Promise<any[]> {
-  const res = await fetch(`${API_BASE_URL}/products/${barcode}/audit-logs`);
+  const res = await apiFetch(`${API_BASE_URL}/products/${barcode}/audit-logs`);
   if (!res.ok) throw new Error('Gagal mengambil data riwayat audit produk');
   const result = await res.json();
   return result.data || [];
@@ -133,7 +200,7 @@ export async function getAuditLogsServerSide(params: AuditLogPaginationParams): 
   if (params.start_date) query.set("start_date", params.start_date);
   if (params.end_date) query.set("end_date", params.end_date);
 
-  const res = await fetch(`${API_BASE_URL}/audit-logs?${query.toString()}`);
+  const res = await apiFetch(`${API_BASE_URL}/audit-logs?${query.toString()}`);
   if (!res.ok) throw new Error("Gagal memuat log audit dari server");
   return res.json();
 }
@@ -150,15 +217,31 @@ export interface StoreSettings {
   updated_at?: string;
 }
 
-export async function getSettingsFromApi(): Promise<StoreSettings> {
-  const res = await fetch(`${API_BASE_URL}/settings`);
-  if (!res.ok) throw new Error('Gagal mengambil pengaturan toko');
-  const result = await res.json();
-  return result.data;
+export async function getSettingsFromApi(forceRefresh = false): Promise<StoreSettings> {
+  const CACHE_KEY = 'pos_settings_cache';
+  if (!forceRefresh) {
+    const cached = sessionStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        sessionStorage.removeItem(CACHE_KEY);
+      }
+    }
+  }
+
+  const res = await apiFetch(`${API_BASE_URL}/settings`);
+  if (!res.ok) throw new Error('Gagal mengambil pengaturan');
+  const json = await res.json();
+  const data = json.data || json;
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  } catch (e) {}
+  return data;
 }
 
 export async function updateSettingsToApi(data: Partial<StoreSettings> & { actor?: string }): Promise<StoreSettings> {
-  const res = await fetch(`${API_BASE_URL}/settings`, {
+  const res = await apiFetch(`${API_BASE_URL}/settings`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -172,17 +255,43 @@ export async function updateSettingsToApi(data: Partial<StoreSettings> & { actor
 }
 
 export async function getRolesFromApi(): Promise<any[]> {
-  const res = await fetch(`${API_BASE_URL}/roles`);
-  if (!res.ok) return [];
-  const result = await res.json();
-  return (result.data || []).map((r: any) => ({
-    ...r,
-    permissions: typeof r.permissions === 'string' ? JSON.parse(r.permissions) : r.permissions,
-  }));
+  try {
+    const res = await apiFetch(`${API_BASE_URL}/roles`);
+    if (!res.ok) {
+      console.error('getRolesFromApi failed with status:', res.status);
+      return [];
+    }
+    const json = await res.json();
+    const rawData = json?.roles !== undefined ? json.roles : (json?.data !== undefined ? json.data : json);
+    const rawList = Array.isArray(rawData) ? rawData : [];
+
+    return rawList.map((r: any) => {
+      let perms: string[] = [];
+      if (Array.isArray(r.permissions)) {
+        perms = r.permissions;
+      } else if (typeof r.permissions === 'string') {
+        try {
+          perms = JSON.parse(r.permissions);
+        } catch {
+          perms = r.permissions.replace(/[{}]/g, '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
+      }
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description || '',
+        permissions: perms,
+        isCustom: r.is_custom !== undefined ? r.is_custom : (r.isCustom || false),
+      };
+    });
+  } catch (err) {
+    console.error('Error in getRolesFromApi:', err);
+    return [];
+  }
 }
 
 export async function createRoleToApi(data: { name: string; description: string; permissions: string[]; actor?: string }): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/roles`, {
+  const res = await apiFetch(`${API_BASE_URL}/roles`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -199,7 +308,7 @@ export async function createRoleToApi(data: { name: string; description: string;
 }
 
 export async function updateRolePermissionsToApi(roleId: string, permissions: string[], actor?: string): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/roles/${roleId}/permissions`, {
+  const res = await apiFetch(`${API_BASE_URL}/roles/${roleId}/permissions`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify({ permissions, actor }),
@@ -212,22 +321,33 @@ export async function updateRolePermissionsToApi(roleId: string, permissions: st
 }
 
 export async function getEmployeesFromApi(): Promise<any[]> {
-  const res = await fetch(`${API_BASE_URL}/employees`);
-  if (!res.ok) return [];
-  const result = await res.json();
-  return (result.data || []).map((e: any) => ({
-    id: e.id,
-    name: e.name,
-    username: e.username,
-    pin: e.pin,
-    roleId: e.role_id,
-    phone: e.phone,
-    isActive: e.is_active,
-  }));
+  try {
+    const res = await apiFetch(`${API_BASE_URL}/employees`);
+    if (!res.ok) {
+      console.error('getEmployeesFromApi failed with status:', res.status);
+      return [];
+    }
+    const json = await res.json();
+    const rawData = json?.employees !== undefined ? json.employees : (json?.data !== undefined ? json.data : json);
+    const rawList = Array.isArray(rawData) ? rawData : [];
+
+    return rawList.map((e: any) => ({
+      id: e.id,
+      name: e.name,
+      username: e.username,
+      pin: e.pin,
+      roleId: e.role_id || e.roleId,
+      phone: e.phone || '',
+      isActive: e.is_active !== undefined ? e.is_active : (e.isActive !== undefined ? e.isActive : true),
+    }));
+  } catch (err) {
+    console.error('Error in getEmployeesFromApi:', err);
+    return [];
+  }
 }
 
 export async function createEmployeeToApi(data: { name: string; username: string; pin: string; role_id: string; phone?: string; actor?: string }): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/employees`, {
+  const res = await apiFetch(`${API_BASE_URL}/employees`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -240,7 +360,7 @@ export async function createEmployeeToApi(data: { name: string; username: string
 }
 
 export async function toggleEmployeeStatusToApi(empId: string, actor?: string): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/employees/${empId}/toggle-status?actor=${encodeURIComponent(actor || 'Owner')}`, {
+  const res = await apiFetch(`${API_BASE_URL}/employees/${empId}/toggle-status?actor=${encodeURIComponent(actor || 'Owner')}`, {
     method: 'PATCH',
   });
   if (!res.ok) throw new Error('Gagal update status karyawan');
@@ -248,16 +368,25 @@ export async function toggleEmployeeStatusToApi(empId: string, actor?: string): 
 }
 
 export async function loginWithApi(username: string, pin: string): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+  const encryptedPayload = encryptLoginPayload(username, pin);
+
+  const res = await apiFetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ username, pin }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      encrypted_payload: encryptedPayload,
+    }),
+    credentials: 'include',
   });
+
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Login gagal');
   }
-  return res.json();
+
+  return await res.json();
 }
 
 export async function updateEmployeeToApi(
@@ -272,7 +401,7 @@ export async function updateEmployeeToApi(
     actor_role?: string;
   }
 ): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/employees/${empId}`, {
+  const res = await apiFetch(`${API_BASE_URL}/employees/${empId}`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -293,7 +422,7 @@ export async function updateRoleToApi(
     actor_role?: string;
   }
 ): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/roles/${roleId}`, {
+  const res = await apiFetch(`${API_BASE_URL}/roles/${roleId}`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -306,7 +435,7 @@ export async function updateRoleToApi(
 }
 
 export async function getAuditLogsFromApi(): Promise<any[]> {
-  const res = await fetch(`${API_BASE_URL}/audit-logs`);
+  const res = await apiFetch(`${API_BASE_URL}/audit-logs`);
   if (!res.ok) {
     throw new Error('Gagal mengambil data audit logs');
   }
@@ -341,7 +470,7 @@ export async function getCategoriesServerSide(params: { page?: number;
   if (params.status) query.set("status", params.status);
   if (params.all) query.set("all", "true");
 
-  const res = await fetch(`${API_BASE_URL}/categories?${query.toString()}`);
+  const res = await apiFetch(`${API_BASE_URL}/categories?${query.toString()}`);
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Gagal memuat kategori (${res.status}): ${errText}`);
@@ -359,7 +488,7 @@ export async function createCategoryToApi(data: { name: string; description?: st
     headers["X-User-Name"] = data.actor;
   }
 
-  const res = await fetch(`${API_BASE_URL}/categories`, {
+  const res = await apiFetch(`${API_BASE_URL}/categories`, {
     method: "POST",
     headers,
     body: JSON.stringify(data),
@@ -392,7 +521,7 @@ export async function updateCategoryToApi(
     headers["X-User-Name"] = data.actor;
   }
 
-  const res = await fetch(`${API_BASE_URL}/categories/${id}`, {
+  const res = await apiFetch(`${API_BASE_URL}/categories/${id}`, {
     method: "PUT",
     headers,
     body: JSON.stringify(data),
@@ -422,7 +551,7 @@ export async function deleteCategoryToApi(id: number, actor?: string) {
   }
 
   const query = actor ? `?actor=${encodeURIComponent(actor)}` : "";
-  const res = await fetch(`${API_BASE_URL}/categories/${id}${query}`, {
+  const res = await apiFetch(`${API_BASE_URL}/categories/${id}${query}`, {
     method: "DELETE",
     headers,
   });
@@ -443,7 +572,7 @@ export async function deleteCategoryToApi(id: number, actor?: string) {
 }
 
 export const getBrandsFromApi = async () => {
-  const res = await fetch(`${API_BASE_URL}/brands`, {
+  const res = await apiFetch(`${API_BASE_URL}/brands`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Gagal mengambil daftar brand");
@@ -452,7 +581,7 @@ export const getBrandsFromApi = async () => {
 };
 
 export const createBrandToApi = async (name: string) => {
-  const res = await fetch(`${API_BASE_URL}/brands`, {
+  const res = await apiFetch(`${API_BASE_URL}/brands`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({ name }),
@@ -462,3 +591,29 @@ export const createBrandToApi = async (name: string) => {
   return json.data;
 };
 
+
+
+// Memeriksa validitas sesi aktif via HttpOnly Cookie (JWT)
+export async function checkSessionFromApi(): Promise<{ employee: any; role: any }> {
+  const res = await apiFetch(`${API_BASE_URL}/auth/me`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new Error('Sesi kedaluwarsa atau tidak valid');
+  }
+  const json = await res.json();
+  return {
+    employee: json.employee,
+    role: json.role,
+  };
+}
+
+// Menghapus HttpOnly Cookie di server
+export async function logoutWithApi(): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch (e) {}
+}

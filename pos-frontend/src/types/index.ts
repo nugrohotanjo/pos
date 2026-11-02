@@ -45,6 +45,7 @@ export interface Product {
   name: string;
   category: string;
   category_id?: number;
+  category_ref?: { id: number; name: string; slug?: string };
   brand?: string;
   brand_id?: number;
   brandId?: number;

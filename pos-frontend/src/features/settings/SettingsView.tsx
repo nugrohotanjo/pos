@@ -43,7 +43,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const fetchSettings = async () => {
     setIsLoading(true);
     try {
-      const data = await getSettingsFromApi();
+      const data = await getSettingsFromApi(true);
       setStoreName(data.app_name);
       setAddress(data.store_address || '');
       setPhone(data.store_phone || '');
