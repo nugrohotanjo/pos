@@ -24,7 +24,8 @@ export const ProductAddModal: React.FC<ProductAddModalProps> = ({
   const [newStock, setNewStock] = useState('10');
   const [newUnit, setNewUnit] = useState('Pcs');
   const [newMinStock, setNewMinStock] = useState('5');
-  const [newShelfLocation, setNewShelfLocation] = useState('');
+  const [newShelfLocation, setNewShelfLocation] = useState("");
+  const [newIsActive, setNewIsActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -48,7 +49,7 @@ export const ProductAddModal: React.FC<ProductAddModalProps> = ({
         unit: newUnit,
         minStock: Number(newMinStock) || 5,
         shelfLocation: newShelfLocation.trim(),
-        isActive: true,
+        isActive: newIsActive,
       });
       onClose();
     } catch (err: any) {
@@ -75,6 +76,7 @@ export const ProductAddModal: React.FC<ProductAddModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Identitas Barang: Barcode & Nama Barang (Di Atas) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
@@ -92,6 +94,23 @@ export const ProductAddModal: React.FC<ProductAddModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                Nama Barang <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Contoh: Kemeja Flanel / Semen 50kg"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Klasifikasi & Status: Kategori & Status Produk (Di Bawah) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                 Kategori <span className="text-rose-500">*</span>
               </label>
               <CategoryCascadeSelector
@@ -99,20 +118,20 @@ export const ProductAddModal: React.FC<ProductAddModalProps> = ({
                 onChange={(catName) => setNewCategory(catName)}
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-              Nama Barang <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Kemeja Flanel / Semen 50kg"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                Status Barang
+              </label>
+              <select
+                value={newIsActive ? "ACTIVE" : "INACTIVE"}
+                onChange={(e) => setNewIsActive(e.target.value === "ACTIVE")}
+                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
+              >
+                <option value="INACTIVE">🔴 Tidak Aktif (Draft / Nonaktif)</option>
+                <option value="ACTIVE">🟢 Aktif</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

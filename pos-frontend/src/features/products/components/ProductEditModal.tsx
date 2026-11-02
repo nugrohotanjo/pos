@@ -18,6 +18,8 @@ interface ProductEditModalProps {
       unit: string;
       minStock: number;
       shelfLocation: string;
+      isActive?: boolean;
+      is_active?: boolean;
     },
     reason: string
   ) => Promise<void>;
@@ -37,7 +39,8 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
   const [unit, setUnit] = useState('Pcs');
   const [minStock, setMinStock] = useState('5');
   const [shelfLocation, setShelfLocation] = useState('');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState("");
+  const [isActive, setIsActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -52,6 +55,8 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
       setMinStock((product.minStock ?? (product as any).min_stock ?? 5).toString());
       setShelfLocation(product.shelfLocation ?? (product as any).shelf_location ?? '');
       setReason('');
+      const rawActive = product.isActive !== undefined ? product.isActive : ((product as any).is_active !== undefined ? (product as any).is_active : true);
+      setIsActive(Boolean(rawActive));
     }
   }, [product]);
 
@@ -77,6 +82,8 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
           unit,
           minStock: Number(minStock) || 5,
           shelfLocation: shelfLocation.trim(),
+          isActive: isActive,
+          is_active: isActive,
         },
         reason.trim()
       );
@@ -108,18 +115,20 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Nama Barang</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
-              />
-            </div>
+          {/* Identitas Barang (Di Atas) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Nama Barang <span className="text-rose-500">*</span></label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+            />
+          </div>
 
+          {/* Kategori & Status Barang (Di Bawah) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                 Kategori <span className="text-rose-500">*</span>
@@ -129,11 +138,26 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
                 onChange={(catName) => setCategory(catName)}
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                Status Barang
+              </label>
+              <select
+                value={isActive ? "ACTIVE" : "INACTIVE"}
+                onChange={(e) => setIsActive(e.target.value === "ACTIVE")}
+                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
+              >
+                <option value="ACTIVE">🟢 Aktif</option>
+                <option value="INACTIVE">🔴 Tidak Aktif</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Harga Jual (Rp)</label>
+              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                Harga Jual (Rp)</label>
               <input
                 type="number"
                 required

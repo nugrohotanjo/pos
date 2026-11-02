@@ -25,6 +25,11 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
   const [stock, setStock] = useState(initialProduct ? String(initialProduct.stock) : '10');
   const [unit, setUnit] = useState(initialProduct?.unit || 'Pcs');
   const [minStock, setMinStock] = useState(initialProduct ? String(initialProduct.minStock || 5) : '5');
+  const getInitialActive = (p: any) => {
+    if (!p) return false; // Default BARU: Tidak Aktif
+    return p.isActive !== undefined ? Boolean(p.isActive) : (p.is_active !== undefined ? Boolean(p.is_active) : false);
+  };
+  const [isActive, setIsActive] = useState<boolean>(getInitialActive(initialProduct));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
@@ -71,6 +76,8 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
         stock: Number(stock) || 0,
         unit: unit.trim() || 'Pcs',
         minStock: Number(minStock) || 5,
+        isActive: isActive,
+        is_active: isActive,
       });
       onBack();
     } catch (err: any) {
@@ -134,26 +141,15 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Kolom Kiri: Hierarki Kategori Multi-Level */}
         <div className="lg:col-span-7 space-y-6">
+          {/* 1. Identitas Barang (Sekarang Di Atas) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Layers size={16} className="text-indigo-600" />
-                <span>Kategori & Klasifikasi (Shopee Style)</span>
+                <Package size={16} className="text-indigo-600" />
+                <span>Identitas Barang</span>
               </h3>
-              <span className="text-[11px] text-slate-400">Pilih hingga level terdalam</span>
+              <span className="text-[11px] text-slate-400">Barcode & Nama Produk</span>
             </div>
-
-            <CategoryCascadeSelector
-              value={category}
-              onChange={(selectedName) => setCategory(selectedName)}
-            />
-          </div>
-
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
-              <Package size={16} className="text-indigo-600" />
-              <span>Identitas Barang</span>
-            </h3>
 
             <div className="space-y-4">
               <div>
@@ -170,8 +166,8 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                     Barcode / SKU <span className="text-rose-500">*</span>
                   </label>
@@ -185,7 +181,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                       value={barcode}
                       onChange={(e) => setBarcode(e.target.value)}
                       className={`w-full pl-10 pr-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none ${
-                        isEdit ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:bg-white'
+                        isEdit ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-slate-50 focus:bg-white"
                       }`}
                     />
                   </div>
@@ -208,7 +204,59 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Status Barang: Aktif / Tidak Aktif */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5">
+                  Status Publikasi Produk
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsActive(false)}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      !isActive
+                        ? "bg-rose-50 border-rose-300 text-rose-700 shadow-2xs ring-1 ring-rose-400"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    🔴 Tidak Aktif (Draft)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsActive(true)}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      isActive
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs ring-1 ring-emerald-400"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    🟢 Aktif (Jual)
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {!isActive ? "Barang tidak akan muncul di katalog kasir POS." : "Barang aktif dan siap ditransaksikan di kasir."}
+                </p>
+              </div>
             </div>
+          </div>
+
+          {/* 2. Kategori & Klasifikasi (Sekarang Di Bawah) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Layers size={16} className="text-indigo-600" />
+                <span>Kategori & Klasifikasi (Shopee Style)</span>
+              </h3>
+              <span className="text-[11px] text-slate-400">Pilih hingga level terdalam</span>
+            </div>
+
+            <CategoryCascadeSelector
+              value={category}
+              onChange={(selectedName) => setCategory(selectedName)}
+            />
           </div>
         </div>
 

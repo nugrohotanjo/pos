@@ -12,6 +12,7 @@ import (
 	"pos-backend/models"
 	
 	"github.com/gin-gonic/gin"
+	"strings"
 )
 
 // Helper untuk mengambil string dari map baik camelCase maupun snake_case
@@ -167,6 +168,7 @@ func UpdateProduct(c *gin.Context) {
 		"unit":           product.Unit,
 		"min_stock":      product.MinStock,
 		"shelf_location": product.ShelfLocation,
+				"is_active":      product.IsActive,
 	}
 
 	// 2. Terapkan perubahan field
@@ -208,6 +210,18 @@ func UpdateProduct(c *gin.Context) {
 	if v, ok := getVal(input, "shelf_location", "shelfLocation", "ShelfLocation"); ok {
 		product.ShelfLocation = fmt.Sprint(v)
 	}
+	if v, ok := getVal(input, "is_active", "isActive", "IsActive"); ok {
+		if b, okBool := v.(bool); okBool {
+			product.IsActive = b
+		} else {
+			s := strings.ToLower(fmt.Sprint(v))
+			if s == "true" || s == "1" {
+				// product.IsActive follows user input
+			} else if s == "false" || s == "0" {
+				product.IsActive = false
+			}
+		}
+	}
 
 	product.UpdatedAt = time.Now()
 	if err := config.DB.Save(&product).Error; err != nil {
@@ -226,6 +240,7 @@ func UpdateProduct(c *gin.Context) {
 		"unit":           product.Unit,
 		"min_stock":      product.MinStock,
 		"shelf_location": product.ShelfLocation,
+				"is_active":      product.IsActive,
 	}
 
 	oldJSON, _ := json.Marshal(oldSnapMap)

@@ -81,7 +81,7 @@ export const useProductStore = create<ProductState>((set, get) => ({
   totalPages: 1,
   search: '',
   categoryFilter: 'ALL',
-  statusFilter: "ACTIVE",
+  statusFilter: "ALL",
   sortOrder: "desc",
 
   setFilter: (key, value) => {
@@ -153,10 +153,12 @@ export const useProductStore = create<ProductState>((set, get) => ({
   updateProduct: async (barcode, updatedFields, reason = "Update produk", actorName = getCurrentActorName(), onAudit) => {
     const rawCost = updatedFields.costPrice !== undefined ? updatedFields.costPrice : updatedFields.cost_price;
     const finalCost = isNaN(Number(rawCost)) ? 0 : Number(rawCost);
+    const rawActive = updatedFields.isActive !== undefined ? updatedFields.isActive : (updatedFields.is_active !== undefined ? updatedFields.is_active : undefined);
     const payload = {
       ...updatedFields,
       cost_price: finalCost,
       costPrice: finalCost,
+      ...(rawActive !== undefined ? { is_active: Boolean(rawActive), isActive: Boolean(rawActive) } : {}),
       actor: actorName
     };
     const res = await updateProductToApi(barcode, payload);

@@ -163,6 +163,7 @@ func UpdateCategory(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Kategori tidak ditemukan"})
 		return
 	}
+	oldName := cat.Name
 
 	var input struct {
 		Name        string `json:"name"`
@@ -205,6 +206,17 @@ func UpdateCategory(c *gin.Context) {
 	if err := db.Save(&cat).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui kategori"})
 		return
+	}
+
+	// Cascade update nama kategori ke produk-produk terkait jika nama berubah
+	if oldName != "" && oldName != cat.Name {
+		// Update berdasarkan category_id ATAU nama lama (case-insensitive)
+		db.Model(&models.Product{}).
+			Where("category_id = ? OR LOWER(category) = LOWER(?)", cat.ID, oldName).
+			Updates(map[string]interface{}{
+				"category":    cat.Name,
+				"category_id": cat.ID,
+			})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": cat, "success": true})

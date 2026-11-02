@@ -59,7 +59,11 @@ func PaginateAndFilter(c *gin.Context, db *gorm.DB, model interface{}, result in
 			} else if val == "ARCHIVED" || val == "INACTIVE" {
 				query = query.Where(dbColumn+" = ?", false)
 			} else {
-				query = query.Where(dbColumn+" = ?", val)
+				if dbColumn == "category" {
+								query = query.Where("LOWER(" + dbColumn + ") = LOWER(?)", val)
+							} else {
+								query = query.Where(dbColumn + " = ?", val)
+							}
 			}
 		}
 	}
