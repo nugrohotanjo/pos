@@ -1,11 +1,16 @@
 import React from 'react';
-import { 
-  Search, 
-  RotateCw, 
-  ChevronLeft, 
-  ChevronRight, 
-  FilterX, 
-  Inbox 
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Search,
+  Filter,
+  FilterX,
+  RotateCw,
+  RefreshCw,
+  ArrowUpDown,
+  Inbox,
 } from 'lucide-react';
 
 export interface Column<T> {
@@ -171,7 +176,7 @@ export function DataTable<T>({
                 data.map((row) => (
                   <tr
                     key={keyExtractor(row)}
-                    className="hover:bg-slate-50/70 transition"
+                    className="hover:bg-indigo-50/80 transition-colors duration-150 transition"
                   >
                     {columns.map((col, idx) => (
                       <td
@@ -195,6 +200,7 @@ export function DataTable<T>({
         {/* DataTables Pagination & Entry Controls */}
         {onPageChange && (
           <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
+            {/* Bagian Kiri: Total Data & Dropdown Limit */}
             <div className="flex flex-wrap items-center gap-4">
               <span>
                 Menampilkan <span className="font-bold text-slate-900">{startIndex}</span> -{' '}
@@ -223,29 +229,71 @@ export function DataTable<T>({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Bagian Kanan: Navigasi Halaman Lengkap */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Tombol Halaman Pertama */}
+              <button
+                type="button"
+                onClick={() => onPageChange(1)}
+                disabled={page <= 1 || isLoading}
+                className="p-1.5 border border-slate-200 bg-white hover:bg-indigo-50/80 transition-colors duration-150 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+                title="Halaman Pertama"
+              >
+                <ChevronsLeft size={16} />
+              </button>
+
+              {/* Tombol Halaman Sebelumnya */}
               <button
                 type="button"
                 onClick={() => onPageChange(Math.max(1, page - 1))}
                 disabled={page <= 1 || isLoading}
-                className="p-1.5 border border-slate-200 bg-white hover:bg-slate-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+                className="p-1.5 border border-slate-200 bg-white hover:bg-indigo-50/80 transition-colors duration-150 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
                 title="Halaman Sebelumnya"
               >
                 <ChevronLeft size={16} />
               </button>
 
-              <span className="px-3 py-1 font-semibold text-slate-800 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                Halaman {page} dari {totalPages || 1}
-              </span>
+              {/* Input Loncat ke Halaman (Jump Page) */}
+              <div className="flex items-center gap-1.5 px-3 py-1 font-semibold text-slate-800 bg-white border border-slate-200 rounded-lg shadow-2xs text-xs">
+                <span>Hal.</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, totalPages)}
+                  value={page}
+                  onChange={(e) => {
+                    const target = parseInt(e.target.value, 10);
+                    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+                      onPageChange(target);
+                    }
+                  }}
+                  className="w-12 text-center py-0.5 border border-slate-200 rounded bg-slate-50 font-bold text-indigo-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  title="Ketik nomor halaman untuk loncat langsung"
+                />
+                <span className="text-slate-400">/</span>
+                <span>{totalPages || 1}</span>
+              </div>
 
+              {/* Tombol Halaman Berikutnya */}
               <button
                 type="button"
                 onClick={() => onPageChange(Math.min(totalPages, page + 1))}
                 disabled={page >= totalPages || isLoading}
-                className="p-1.5 border border-slate-200 bg-white hover:bg-slate-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+                className="p-1.5 border border-slate-200 bg-white hover:bg-indigo-50/80 transition-colors duration-150 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
                 title="Halaman Berikutnya"
               >
                 <ChevronRight size={16} />
+              </button>
+
+              {/* Tombol Halaman Terakhir */}
+              <button
+                type="button"
+                onClick={() => onPageChange(totalPages)}
+                disabled={page >= totalPages || isLoading}
+                className="p-1.5 border border-slate-200 bg-white hover:bg-indigo-50/80 transition-colors duration-150 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition shadow-2xs"
+                title="Halaman Terakhir"
+              >
+                <ChevronsRight size={16} />
               </button>
             </div>
           </div>

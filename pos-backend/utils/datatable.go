@@ -60,7 +60,11 @@ func PaginateAndFilter(c *gin.Context, db *gorm.DB, model interface{}, result in
 				query = query.Where(dbColumn+" = ?", false)
 			} else {
 				if dbColumn == "category" {
-								query = query.Where("LOWER(" + dbColumn + ") = LOWER(?)", val)
+								if _, err := strconv.Atoi(val); err == nil {
+									query = query.Where("category_id = ?", val)
+								} else {
+									query = query.Where("LOWER(category) = LOWER(?)", val)
+								}
 							} else {
 								query = query.Where(dbColumn + " = ?", val)
 							}

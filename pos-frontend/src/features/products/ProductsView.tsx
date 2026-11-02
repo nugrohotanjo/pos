@@ -3,6 +3,7 @@ import type { Product, Employee, CustomRole } from '../../types';
 import { useProductStore } from '../../stores/useProductStore';
 import { getProductAuditLogsFromApi } from '../../utils/api';
 import { ProductAuditModal } from './components/ProductAuditModal';
+import { ProductTable } from './components/ProductTable';
 import { ProductFormPage } from './ProductFormPage';
 import { 
   Plus, 
@@ -242,151 +243,31 @@ addProduct,
         </div>
       </div>
 
-      {/* Tabel Data Produk */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <tr>
-                <th className="py-3.5 px-4">Barang & SKU</th>
-                <th className="py-3.5 px-4">Kategori</th>
-                <th className="py-3.5 px-4 text-right">Harga Jual</th>
-                <th className="py-3.5 px-4 text-right">Harga Modal</th>
-                <th className="py-3.5 px-4 text-center">Stok</th>
-                <th className="py-3.5 px-4 text-center">Status</th>
-                <th className="py-3.5 px-4 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
-                    Memuat daftar produk...
-                  </td>
-                </tr>
-              ) : products.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
-                    Tidak ada produk yang ditemukan.
-                  </td>
-                </tr>
-              ) : (
-                products.map((p: Product) => {
-                  const isLowStock = p.stock <= (p.minStock || 5);
-                  return (
-                    <tr key={p.barcode} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{p.name}</div>
-                        <div className="text-[11px] font-mono text-slate-400 mt-0.5">{p.barcode}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
-                          <Layers size={11} className="text-slate-400" />
-                          <span>{p.category || '-'}</span>
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-slate-900">
-                        Rp {p.price.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-500 font-mono text-xs">
-                        Rp {Number(p.costPrice ?? (p as any).cost_price ?? 0).toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            isLowStock
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          }`}
-                        >
-                          {p.stock} {p.unit || 'Pcs'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {p.isActive !== false ? (
-                          <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            Aktif
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                            Diarsipkan
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAuditModal(p)}
-                            title="Riwayat Audit"
-                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                          >
-                            <History size={15} />
-                          </button>
-                          {canEdit && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingProduct(p);
-                                  setViewMode('EDIT');
-                                }}
-                                title="Ubah Produk"
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer"
-                              >
-                                <Edit3 size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleArchive(p.barcode, p.isActive !== false)}
-                                title={p.isActive !== false ? 'Arsipkan' : 'Aktifkan Kembali'}
-                                className={`p-1.5 rounded-lg cursor-pointer ${
-                                  p.isActive !== false
-                                    ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
-                                    : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
-                                }`}
-                              >
-                                {p.isActive !== false ? <Archive size={15} /> : <ArchiveRestore size={15} />}
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Controls */}
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500">
-          <div>
-            Total <span className="font-bold text-slate-800">{totalItems}</span> barang (Halaman{' '}
-            <span className="font-bold text-slate-800">{page}</span> dari{' '}
-            <span className="font-bold text-slate-800">{totalPages}</span>)
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setFilter("page", page - 1)}
-              className="px-3 py-1 bg-white border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-100 cursor-pointer font-medium"
-            >
-              Sebelumnya
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setFilter("page", page + 1)}
-              className="px-3 py-1 bg-white border border-slate-200 rounded-lg disabled:opacity-40 hover:bg-slate-100 cursor-pointer font-medium"
-            >
-              Berikutnya
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Tabel Data Produk (Menggunakan Komponen Reusable) */}
+      <ProductTable
+        products={products}
+        isLoading={isLoading}
+        canEdit={canEdit}
+        page={page}
+        limit={limit}
+        totalItems={totalItems}
+        totalPages={totalPages}
+        onPageChange={(newPage) => setFilter('page', newPage)}
+        onLimitChange={(newLimit) => {
+          setFilter('limit', newLimit);
+          setFilter('page', 1);
+        }}
+        onEdit={(p) => {
+          setEditingProduct(p);
+          setViewMode('EDIT');
+        }}
+        onViewAudit={handleOpenAuditModal}
+        onToggleArchive={(barcode) => {
+          const targetProduct = products.find((p) => p.barcode === barcode);
+          const currentIsActive = targetProduct ? targetProduct.isActive !== false : true;
+          handleToggleArchive(barcode, currentIsActive);
+        }}
+      />
 
       {/* Modal Audit Trail Log */}
       {auditProduct && (

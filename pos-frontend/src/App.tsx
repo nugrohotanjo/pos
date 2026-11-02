@@ -92,7 +92,6 @@ export default function App() {
   };
 
   const products = useProductStore((state) => state.products);
-  const fetchProducts = useProductStore((state) => state.fetchProducts);
   const adjustStockLocal = useProductStore((state) => state.adjustStockLocal);
 
   const [stockBatches, setStockBatches] = useState<StockBatch[]>(INITIAL_STOCK_BATCHES);
@@ -139,9 +138,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchProducts();
     syncRolesAndSettings();
-  }, [fetchProducts]);
+  }, []);
 
   const hasPermission = (perm: AppPermission): boolean => {
     if (!currentUserRole) return false;

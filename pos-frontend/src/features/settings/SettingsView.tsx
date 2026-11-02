@@ -249,7 +249,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200/70">
               <div>
                 <p className="text-sm font-bold text-slate-800">QRIS Dinamis (MDR 0.7%)</p>
-                <p className="text-xs text-slate-500">Scan QR payment (GoPay, OVO, Dana, ShopeePay, BCA, Mandiri, dll).</p>
+                <p className="text-xs text-slate-500">Scan QR payment (GoPay, OVO, Dana, BCA, Mandiri, dll).</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input

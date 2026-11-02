@@ -81,7 +81,7 @@ export const useProductStore = create<ProductState>((set, get) => ({
   totalPages: 1,
   search: '',
   categoryFilter: 'ALL',
-  statusFilter: "ALL",
+  statusFilter: "ACTIVE",
   sortOrder: "desc",
 
   setFilter: (key, value) => {
@@ -103,6 +103,7 @@ export const useProductStore = create<ProductState>((set, get) => ({
   },
 
   fetchProducts: async () => {
+    if (get().isLoading) return;
     const { page, limit, search, categoryFilter, statusFilter } = get();
     set({ isLoading: true, backendError: null });
 

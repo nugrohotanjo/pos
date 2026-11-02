@@ -53,6 +53,35 @@ export const CategoryCascadeSelector: React.FC<CategoryCascadeSelectorProps> = (
     loadCategoryTree();
   }, []);
 
+  // Auto-map path saat value awal ada (misal mode edit produk)
+  useEffect(() => {
+    if (!value || tree.length === 0) return;
+
+    // Helper rekursif untuk mencari rantai kategori sampai node yang cocok
+    const findPath = (nodes: CategoryItem[], target: string, currentPath: CategoryItem[]): CategoryItem[] | null => {
+      for (const node of nodes) {
+        const nextPath = [...currentPath, node];
+        if (
+          node.name.toLowerCase().trim() === target.toLowerCase().trim() ||
+          node.slug.toLowerCase().trim() === target.toLowerCase().trim()
+        ) {
+          return nextPath;
+        }
+        if (node.children && node.children.length > 0) {
+          const res = findPath(node.children, target, nextPath);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+
+    const matchedPath = findPath(tree, value, []);
+    if (matchedPath && matchedPath.length > 0) {
+      setSelectedPath(matchedPath);
+    }
+  }, [value, tree]);
+
+
   // Handler saat seller mengklik item di kolom tingkat tertentu (levelIndex)
   const handleSelect = (category: CategoryItem, levelIndex: number) => {
     const newPath = selectedPath.slice(0, levelIndex);
@@ -101,7 +130,7 @@ export const CategoryCascadeSelector: React.FC<CategoryCascadeSelectorProps> = (
         )}
       </div>
 
-      {/* Kolom Cascading Multi-Level (Ala Shopee Seller Centre) */}
+      {/* Kolom Cascading Multi-Level (Cascading Multi-Level) */}
       {isLoading ? (
         <div className="p-6 text-center text-xs text-slate-400 border border-dashed rounded-xl">
           Memuat susunan kategori...

@@ -59,7 +59,9 @@ func main() {
 		
   
 		// Products & Categories
-				v1.GET("/products", handlers.GetProducts)
+				v1.GET("/brands", handlers.GetBrands)
+		v1.POST("/brands", handlers.CreateBrand)
+		v1.GET("/products", handlers.GetProducts)
 		v1.POST("/products", handlers.CreateProduct)
 		v1.PUT("/products/:barcode", handlers.UpdateProduct)
 		v1.PATCH("/products/:barcode/archive", handlers.ToggleArchiveProduct)

@@ -44,6 +44,22 @@ export interface Product {
   barcode: string;
   name: string;
   category: string;
+  category_id?: number;
+  brand?: string;
+  brand_id?: number;
+  brandId?: number;
+  dimension?: string;
+  origin?: string;
+  warranty_period?: string;
+  warrantyPeriod?: string;
+  warranty_type?: string;
+  warrantyType?: string;
+  is_custom?: boolean;
+  isCustom?: boolean;
+  cert_number?: string;
+  certNumber?: string;
+
+  categoryId?: number;
   price: number;
   costPrice: number;
   stock: number;
@@ -159,4 +175,10 @@ export interface HeldOrder {
   label?: string;
   items: CartItem[];
   total?: number;
+}
+
+
+export interface Brand {
+  id: number;
+  name: string;
 }

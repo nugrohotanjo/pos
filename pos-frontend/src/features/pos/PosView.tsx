@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useProductStore } from '../../stores/useProductStore';
 import { 
   ScanBarcode, 
   ArrowLeft, 
@@ -47,7 +48,8 @@ interface PosViewProps {
     appName?: string;
 }
 
-export const PosView: React.FC<PosViewProps> = ({ 
+export const PosView: React.FC<PosViewProps> = ({
+ 
   products, 
   paymentConfig,
   setActiveMenu,

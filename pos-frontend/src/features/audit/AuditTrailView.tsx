@@ -1,3 +1,13 @@
+const IGNORED_DIFF_FIELDS = new Set([
+  'updated_at',
+  'updatedAt',
+  'created_at',
+  'createdAt',
+  'deleted_at',
+  'deletedAt',
+  'id',
+  'ID',
+]);
 import React, { useState, useEffect, useCallback } from 'react';
 import type { AuditLog } from '../../types';
 import { getAuditLogsServerSide } from '../../utils/api';
@@ -298,7 +308,10 @@ export const AuditTrailView: React.FC = () => {
               {(() => {
                 const oldObj = parseJsonSafe(selectedLogForDiff.old_values) || {};
                 const newObj = parseJsonSafe(selectedLogForDiff.new_values) || {};
-                const allKeys = Array.from(new Set([...Object.keys(oldObj), ...Object.keys(newObj)]));
+                const ignoredAuditKeys = new Set(['updated_at', 'updatedAt', 'created_at', 'createdAt', 'deleted_at', 'deletedAt', 'id', 'ID']);
+                const allKeys = Array.from(new Set([...Object.keys(oldObj), ...Object.keys(newObj)])).filter(
+                  (k) => !ignoredAuditKeys.has(k)
+                );
 
                 const changedKeys = allKeys.filter(
                   (k) => JSON.stringify(oldObj[k]) !== JSON.stringify(newObj[k])
@@ -378,7 +391,7 @@ export const AuditTrailView: React.FC = () => {
                               return (
                                 <tr
                                   key={k}
-                                  className={isChanged ? 'bg-amber-50/20 font-medium' : 'hover:bg-slate-50/50 opacity-60'}
+                                  className={isChanged ? 'bg-amber-50/20 font-medium' : 'hover:bg-indigo-50/80 transition-colors duration-150 opacity-60'}
                                 >
                                   <td className="py-3 px-4 font-sans font-semibold text-slate-800">
                                     <div className="flex items-center gap-2">

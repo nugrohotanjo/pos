@@ -129,7 +129,15 @@ func ToggleArchiveProduct(c *gin.Context) {
 
 		product.IsActive = !product.IsActive
 	product.UpdatedAt = time.Now()
-	config.DB.Save(&product)
+	
+
+
+	
+
+	if err := config.DB.Save(&product).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
 
 	// Audit otomatis ditangani oleh GORM plugin
 
@@ -157,19 +165,9 @@ func UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	// 1. Tangkap snapshot sebelum diubah
-	oldSnapMap := map[string]interface{}{
-		"barcode":        product.Barcode,
-		"name":           product.Name,
-		"category":       product.Category,
-		"price":          product.Price,
-		"cost_price":     product.CostPrice,
-		"stock":          product.Stock,
-		"unit":           product.Unit,
-		"min_stock":      product.MinStock,
-		"shelf_location": product.ShelfLocation,
-				"is_active":      product.IsActive,
-	}
+	// 1. Tangkap snapshot sebelum diubah secara dinamis dari model
+	oldJSONBytes, _ := json.Marshal(product)
+	oldJSON := string(oldJSONBytes)
 
 	// 2. Terapkan perubahan field
 	if v, ok := getVal(input, "name", "Name"); ok {
@@ -177,9 +175,24 @@ func UpdateProduct(c *gin.Context) {
 			product.Name = str
 		}
 	}
-	if v, ok := getVal(input, "category", "Category"); ok {
+	// Category & CategoryID Handler
+	if v, ok := getVal(input, "category_id", "categoryId", "CategoryID"); ok {
+		if n, valid := toInt(v); valid && n > 0 {
+			cid := uint(n)
+			product.CategoryID = &cid
+			var cat models.Category
+			if err := config.DB.First(&cat, cid).Error; err == nil {
+				product.Category = cat.Name
+			}
+		}
+	} else if v, ok := getVal(input, "category", "Category"); ok {
 		if str := fmt.Sprint(v); str != "" {
 			product.Category = str
+			var cat models.Category
+			if err := config.DB.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", str).First(&cat).Error; err == nil {
+				product.CategoryID = &cat.ID
+				product.Category = cat.Name
+			}
 		}
 	}
 	if v, ok := getVal(input, "price", "Price"); ok {
@@ -223,28 +236,69 @@ func UpdateProduct(c *gin.Context) {
 		}
 	}
 
-	product.UpdatedAt = time.Now()
+			// Atribut Tambahan
+		if v, ok := getVal(input, "dimension", "Dimension"); ok {
+			product.Dimension = fmt.Sprint(v)
+		}
+		if v, ok := getVal(input, "origin", "Origin"); ok {
+			product.Origin = fmt.Sprint(v)
+		}
+		if v, ok := getVal(input, "warranty_period", "warrantyPeriod", "WarrantyPeriod"); ok {
+			product.WarrantyPeriod = fmt.Sprint(v)
+		}
+		if v, ok := getVal(input, "warranty_type", "warrantyType", "WarrantyType"); ok {
+			product.WarrantyType = fmt.Sprint(v)
+		}
+		if v, ok := getVal(input, "is_custom", "isCustom", "IsCustom"); ok {
+			if b, okBool := v.(bool); okBool {
+				product.IsCustom = &b
+			} else {
+				s := strings.ToLower(fmt.Sprint(v))
+				if s == "true" || s == "1" || s == "ya" {
+					tr := true
+					product.IsCustom = &tr
+				} else if s == "false" || s == "0" || s == "tidak" {
+					fl := false
+					product.IsCustom = &fl
+				}
+			}
+		}
+		if v, ok := getVal(input, "cert_number", "certNumber", "CertNumber"); ok {
+			product.CertNumber = fmt.Sprint(v)
+		}
+
+		product.UpdatedAt = time.Now()
+
 	if err := config.DB.Save(&product).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update produk: " + err.Error()})
 		return
 	}
 
-	// 3. Tangkap snapshot sesudah diubah & simpan ke audit_logs (Hanya 1 baris)
-	newSnapMap := map[string]interface{}{
-		"barcode":        product.Barcode,
-		"name":           product.Name,
-		"category":       product.Category,
-		"price":          product.Price,
-		"cost_price":     product.CostPrice,
-		"stock":          product.Stock,
-		"unit":           product.Unit,
-		"min_stock":      product.MinStock,
-		"shelf_location": product.ShelfLocation,
-				"is_active":      product.IsActive,
+	// 3. Tangkap snapshot sesudah diubah secara dinamis dari model
+	newJSONBytes, _ := json.Marshal(product)
+	newJSON := string(newJSONBytes)
+
+	// Hitung perubahan secara dinamis
+	var oldMap, newMap map[string]interface{}
+	_ = json.Unmarshal([]byte(oldJSON), &oldMap)
+	_ = json.Unmarshal([]byte(newJSON), &newMap)
+
+	var changedFields []string
+	ignoredFields := map[string]bool{"updated_at": true, "updatedAt": true, "created_at": true, "createdAt": true, "id": true, "ID": true, "deleted_at": true}
+	for k, nv := range newMap {
+		if ignoredFields[k] {
+			continue
+		}
+		ov := oldMap[k]
+		if fmt.Sprint(ov) != fmt.Sprint(nv) {
+			changedFields = append(changedFields, k)
+		}
 	}
 
-	oldJSON, _ := json.Marshal(oldSnapMap)
-	newJSON, _ := json.Marshal(newSnapMap)
+	diffText := ""
+	if len(changedFields) > 0 {
+		diffText = fmt.Sprintf(" (Perubahan: %s)", strings.Join(changedFields, ", "))
+	}
 
 	actor := c.GetHeader("X-User-Name")
 	if actor == "" {
@@ -259,7 +313,7 @@ func UpdateProduct(c *gin.Context) {
 		Module:    "PRODUCTS",
 		Action:    "UPDATE",
 		User:      actor,
-		Details:   fmt.Sprintf("Pembaruan master barang: %s (%s)", product.Name, product.Barcode),
+		Details: fmt.Sprintf("Pembaruan master barang: %s (%s)%s", product.Name, product.Barcode, diffText),
 		OldValues: string(oldJSON),
 		NewValues: string(newJSON),
 		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
