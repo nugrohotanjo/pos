@@ -1,12 +1,11 @@
-export type ActiveMenu = 
-  | 'dashboard' 
+export type ActiveMenu = | 'dashboard' 
   | 'pos' 
   | 'products' 
   | 'stock-ledger' 
   | 'reports' 
   | 'audit-trail' 
   | 'users' 
-  | 'settings';
+  | 'settings' | "categories";
 
 export type AppPermission = 
   | 'access_dashboard'

@@ -225,7 +225,7 @@ func GetEmployees(c *gin.Context) {
 	}
 
 	var employees []models.Employee
-	if err := config.DB.Select("id, name, username, '••••' as pin, role_id, phone, is_active, created_at, updated_at").Order("created_at asc").Find(&employees).Error; err != nil {
+	if err := config.DB.Select("id, name, username, '••••' as pin, role_id, phone, is_active, created_at, updated_at").Order("created_at desc").Find(&employees).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}

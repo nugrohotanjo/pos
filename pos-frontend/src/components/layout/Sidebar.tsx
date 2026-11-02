@@ -46,6 +46,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard Pusat', icon: LayoutDashboard, permission: 'access_dashboard' },
     { id: 'products', label: 'Data Barang & Stok', icon: Package, permission: 'manage_products' },
+  {
+    id: "categories",
+    label: "Kategori Barang",
+    icon: Boxes,
+    permission: "manage_products",
+  },
     { id: 'stock-ledger', label: 'Kartu Stok & Audit', icon: Boxes, permission: 'manage_stock' },
     { id: 'reports', label: 'Laporan Penjualan', icon: FileBarChart, permission: 'view_reports' },
     { id: 'audit-trail', label: 'Audit Trail Global', icon: ShieldCheck, permission: 'view_audit_trail' },

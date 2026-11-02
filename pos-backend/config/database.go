@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 	"pos-backend/models"
-
+	
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -27,10 +27,11 @@ func ConnectDatabase() {
 		log.Fatalf("Gagal terhubung ke database: %v", err)
 	}
 
-	err = db.AutoMigrate(&models.Product{}, &models.Order{}, &models.AuditLog{})
+	err = db.AutoMigrate(&models.Product{}, &models.Order{}, &models.AuditLog{}, &models.Category{})
 	if err != nil {
 		log.Fatalf("AutoMigrate gagal: %v", err)
 	}
 
+	RegisterAuditPlugin(db)
 	DB = db
 }

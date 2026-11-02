@@ -1,3 +1,4 @@
+import { CategoriesView } from "./features/categories/CategoriesView";
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -65,9 +66,9 @@ export default function App() {
   const currentPath = location.pathname.replace(/^\//, '') || 'dashboard';
 
   const [activeMenu, setActiveMenuState] = useState<ActiveMenu>(() => {
-    const validMenus: ActiveMenu[] = [
-      'dashboard', 'pos', 'products', 'stock-ledger', 
-      'reports', 'audit-trail', 'users', 'settings'
+    const validMenus: ActiveMenu[] = ['dashboard', 'pos', 'products', 'stock-ledger', 
+      'reports', 'audit-trail', 'users', 'settings',
+      "categories"
     ];
     return validMenus.includes(currentPath as ActiveMenu) ? (currentPath as ActiveMenu) : 'dashboard';
   });
@@ -419,6 +420,17 @@ export default function App() {
             )
           )}
           
+          
+
+          {activeMenu === "categories" && (
+            <CategoriesView
+              currentUser={currentUser}
+              currentUserRole={currentUserRole}
+              canEdit={true}
+              onAuditLog={() => {}}
+            />
+          )}
+
           {activeMenu === 'stock-ledger' && (
             hasPermission('manage_stock') ? (
               <StockLedgerView 

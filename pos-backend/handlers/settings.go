@@ -1,8 +1,7 @@
 package handlers
 
 import (
-	"fmt"
-	"net/http"
+		"net/http"
 	"time"
 
 	"pos-backend/config"
@@ -69,8 +68,7 @@ func UpdateSettings(c *gin.Context) {
 		config.DB.Create(&setting)
 	}
 
-	oldName := setting.AppName
-
+	
 	if input.AppName != "" {
 		setting.AppName = input.AppName
 	}
@@ -104,16 +102,8 @@ func UpdateSettings(c *gin.Context) {
 	if actor == "" {
 		actor = "Owner / Administrator"
 	}
-	auditDetail := fmt.Sprintf("Memperbarui konfigurasi sistem/toko: Nama: %s (sebelumnya: %s), Cash: %t, QRIS: %t, EDC: %t",
-		setting.AppName, oldName, setting.CashEnabled, setting.QrisEnabled, setting.EdcEnabled)
-
-	config.DB.Create(&models.AuditLog{
-		Module:    "SETTINGS",
-		Action:    "UPDATE_SETTINGS",
-		User:      actor,
-		Details:   auditDetail,
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
+	
+	// Audit otomatis ditangani oleh GORM plugin
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

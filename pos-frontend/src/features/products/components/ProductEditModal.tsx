@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Product } from '../../../types';
-import { CategoryCombobox } from '../CategoryCombobox';
+import { CategoryCascadeSelector } from "../../../components/CategoryCascadeSelector";
 import { Edit3, X } from 'lucide-react';
 
 interface ProductEditModalProps {
@@ -124,11 +124,9 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                 Kategori <span className="text-rose-500">*</span>
               </label>
-              <CategoryCombobox
-                categories={categories}
+              <CategoryCascadeSelector
                 value={category}
-                onChange={setCategory}
-                required
+                onChange={(catName) => setCategory(catName)}
               />
             </div>
           </div>

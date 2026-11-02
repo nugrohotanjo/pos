@@ -1,3 +1,18 @@
+
+function getCurrentActorName(): string {
+  try {
+    for (const key of ["pos_auth_user", "current_user", "auth_user", "user"]) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const name = parsed.name || parsed.username || parsed.fullName || parsed.user?.name;
+        if (name) return name;
+      }
+    }
+  } catch (e) {}
+  return "Fadhil";
+}
+
 import { create } from 'zustand';
 import type { Product } from '../types';
 import { 
@@ -22,17 +37,20 @@ interface ProductState {
   search: string;
   categoryFilter: string;
   statusFilter: string;
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  setSorting: (column: string) => void;
 
   // Actions
   fetchProducts: () => Promise<void>;
   fetchCategories: () => Promise<void>;
   setFilter: (key: 'page' | 'limit' | 'search' | 'categoryFilter' | 'statusFilter', value: any) => void;
-  addProduct: (newProduct: Product, actorName: string, onAudit?: (details: string) => void) => Promise<void>;
+  addProduct: (newProduct: Product, actorName?: string, onAudit?: (details: string) => void) => Promise<void>;
   updateProduct: (
     barcode: string,
     updatedFields: any,
-    reason: string,
-    actorName: string,
+    reason?: string,
+    actorName?: string,
     onAudit?: (details: string) => void
   ) => Promise<void>;
   toggleArchiveProduct: (
@@ -43,6 +61,15 @@ interface ProductState {
 }
 
 export const useProductStore = create<ProductState>((set, get) => ({
+  sortBy: "created_at",
+  sortDir: "desc" as "asc" | "desc",
+  setSorting: (column: string) => {
+    const currentSort = get().sortBy;
+    const currentDir = get().sortDir;
+    const nextDir = currentSort === column && currentDir === "desc" ? "asc" : "desc";
+    set({ sortBy: column, sortDir: nextDir });
+    get().fetchProducts();
+  },
   products: [],
   categories: [],
   isLoading: false,
@@ -54,7 +81,8 @@ export const useProductStore = create<ProductState>((set, get) => ({
   totalPages: 1,
   search: '',
   categoryFilter: 'ALL',
-  statusFilter: 'ACTIVE',
+  statusFilter: "ACTIVE",
+  sortOrder: "desc",
 
   setFilter: (key, value) => {
     set((state) => ({
@@ -79,17 +107,28 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ isLoading: true, backendError: null });
 
     try {
+      const { page, limit, search, categoryFilter, statusFilter, sortBy, sortDir } = get();
       const res = await getProductsServerSide({
         page,
         limit,
         search,
         category: categoryFilter,
-        status: statusFilter
+        status: statusFilter,
+        order: `${sortBy || "created_at"} ${sortDir || "desc"}`
       });
 
+            const rawList = Array.isArray(res?.data) ? res.data : [];
+      const normalizedProducts = rawList.map((p: any) => ({
+        ...p,
+        costPrice: Number(p.costPrice ?? p.cost_price ?? 0),
+        minStock: Number(p.minStock ?? p.min_stock ?? 5),
+        shelfLocation: p.shelfLocation ?? p.shelf_location ?? "",
+        isActive: p.isActive !== undefined ? p.isActive : (p.is_active !== undefined ? p.is_active : true)
+      }));
+
       set({
-        products: res.data || [],
-        totalItems: res?.pagination?.total_items ?? (Array.isArray(res?.data) ? res.data.length : 0),
+        products: normalizedProducts,
+        totalItems: res?.pagination?.total_items ?? normalizedProducts.length,
         totalPages: res?.pagination?.total_pages ?? 1,
         isLoading: false
       });
@@ -102,7 +141,7 @@ export const useProductStore = create<ProductState>((set, get) => ({
     }
   },
 
-  addProduct: async (newProduct, actorName, onAudit) => {
+  addProduct: async (newProduct, actorName = getCurrentActorName(), onAudit) => {
     await createProductToApi(newProduct);
     if (onAudit) {
       onAudit(`Menambahkan barang baru: "${newProduct.name}" (${newProduct.barcode})`);
@@ -111,16 +150,20 @@ export const useProductStore = create<ProductState>((set, get) => ({
     await get().fetchCategories();
   },
 
-  updateProduct: async (barcode, updatedFields, reason, actorName, onAudit) => {
+  updateProduct: async (barcode, updatedFields, reason = "Update produk", actorName = getCurrentActorName(), onAudit) => {
+    const rawCost = updatedFields.costPrice !== undefined ? updatedFields.costPrice : updatedFields.cost_price;
+    const finalCost = isNaN(Number(rawCost)) ? 0 : Number(rawCost);
     const payload = {
       ...updatedFields,
-      actor: actorName,
-      reason,
+      cost_price: finalCost,
+      costPrice: finalCost,
+      actor: actorName
     };
-    await updateProductToApi(barcode, payload);
-    if (onAudit) {
-      onAudit(`Koreksi data barang (${barcode}): Alasan - ${reason}`);
-    }
+    const res = await updateProductToApi(barcode, payload);
+    // Update langsung state lokal agar posisi baris tidak bergeser
+    set((state) => ({
+      products: state.products.map((p) => p.barcode === barcode ? { ...p, ...payload, costPrice: finalCost } : p)
+    }));
     await get().fetchProducts();
     await get().fetchCategories();
   },

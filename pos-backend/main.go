@@ -14,11 +14,24 @@ func main() {
 	config.ConnectDatabase()
 
 	r := gin.Default()
+	r.Use(func(c *gin.Context) {
+		actor := c.GetHeader("X-User-Name")
+		if actor == "" {
+			actor = "Fadhil"
+		}
+		if config.DB != nil {
+			ctx := config.SetAuditUser(c.Request.Context(), actor)
+			c.Request = c.Request.WithContext(ctx)
+		}
+		c.Next()
+	})
+
+	
 
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-Name")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 
 		if c.Request.Method == "OPTIONS" {
@@ -33,9 +46,20 @@ func main() {
 
 	v1 := r.Group("/api/v1")
 	{
+
+		// Categories Master Routes
+		categories := v1.Group("/categories")
+		{
+			categories.GET("", handlers.GetCategories)
+			categories.POST("", handlers.CreateCategory)
+			categories.PUT("/:id", handlers.UpdateCategory)
+			categories.DELETE("/:id", handlers.DeleteCategory)
+		}
+
+		
+  
 		// Products & Categories
-		v1.GET("/categories", handlers.GetCategories)
-		v1.GET("/products", handlers.GetProducts)
+				v1.GET("/products", handlers.GetProducts)
 		v1.POST("/products", handlers.CreateProduct)
 		v1.PUT("/products/:barcode", handlers.UpdateProduct)
 		v1.PATCH("/products/:barcode/archive", handlers.ToggleArchiveProduct)

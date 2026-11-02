@@ -17,6 +17,7 @@ const menuTitles: Record<ActiveMenu, string> = {
   dashboard: 'Dashboard Pusat',
   pos: 'Layar Kasir (POS)',
   products: 'Master Data Barang & Stok',
+  categories: "Master Kategori Barang",
   'stock-ledger': 'Kartu Stok & Audit',
   reports: 'Laporan Penjualan',
   'audit-trail': 'Audit Trail Global',

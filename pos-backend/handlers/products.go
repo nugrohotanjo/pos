@@ -3,14 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"pos-backend/utils"
+			"net/http"
 	"strconv"
 	"time"
 
 	"pos-backend/config"
 	"pos-backend/models"
-	"pos-backend/utils"
-
+	
 	"github.com/gin-gonic/gin"
 )
 
@@ -100,8 +100,7 @@ func CreateProduct(c *gin.Context) {
 		return
 	}
 
-	newSnap, _ := json.Marshal(product)
-	actor := input.Actor
+		actor := input.Actor
 	if actor == "" {
 		actor = c.GetHeader("X-User-Name")
 	}
@@ -109,17 +108,34 @@ func CreateProduct(c *gin.Context) {
 		actor = "Sistem"
 	}
 
-	config.DB.Create(&models.AuditLog{
-		Module:    "PRODUCTS",
-		Action:    "CREATE",
-		User:      actor,
-		Details:   fmt.Sprintf("Menambahkan produk baru: %s (%s)", product.Name, product.Barcode),
-		NewValues: string(newSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
+	// Audit ditangani otomatis oleh GORM plugin
 
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": product})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
 }
+
+// PATCH /api/v1/products/:barcode/archive
+func ToggleArchiveProduct(c *gin.Context) {
+	if config.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
+		return
+	}
+	barcode := c.Param("barcode")
+	var product models.Product
+	if err := config.DB.First(&product, "barcode = ?", barcode).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
+		return
+	}
+
+		product.IsActive = !product.IsActive
+	product.UpdatedAt = time.Now()
+	config.DB.Save(&product)
+
+	// Audit otomatis ditangani oleh GORM plugin
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
+}
+
+// DELETE /api/v1/products/:barcode
 
 // PUT /api/v1/products/:barcode
 func UpdateProduct(c *gin.Context) {
@@ -140,8 +156,9 @@ func UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	// 1. Snapshot BEFORE (Nilai asli sebelum diedit)
+	// 1. Tangkap snapshot sebelum diubah
 	oldSnapMap := map[string]interface{}{
+		"barcode":        product.Barcode,
 		"name":           product.Name,
 		"category":       product.Category,
 		"price":          product.Price,
@@ -151,70 +168,45 @@ func UpdateProduct(c *gin.Context) {
 		"min_stock":      product.MinStock,
 		"shelf_location": product.ShelfLocation,
 	}
-	oldSnap, _ := json.Marshal(oldSnapMap)
 
-	// 2. Inisialisasi Snapshot AFTER dengan nilai BEFORE
-	newSnapMap := make(map[string]interface{})
-	for k, v := range oldSnapMap {
-		newSnapMap[k] = v
-	}
-
-	// 3. Update field baik yang dikirim dalam snake_case maupun camelCase
+	// 2. Terapkan perubahan field
 	if v, ok := getVal(input, "name", "Name"); ok {
-		strVal := fmt.Sprint(v)
-		if strVal != "" {
-			product.Name = strVal
-			newSnapMap["name"] = product.Name
+		if str := fmt.Sprint(v); str != "" {
+			product.Name = str
 		}
 	}
-
 	if v, ok := getVal(input, "category", "Category"); ok {
-		strVal := fmt.Sprint(v)
-		if strVal != "" {
-			product.Category = strVal
-			newSnapMap["category"] = product.Category
+		if str := fmt.Sprint(v); str != "" {
+			product.Category = str
 		}
 	}
-
 	if v, ok := getVal(input, "price", "Price"); ok {
 		if n, valid := toInt(v); valid {
 			product.Price = n
-			newSnapMap["price"] = product.Price
 		}
 	}
-
 	if v, ok := getVal(input, "cost_price", "costPrice", "CostPrice"); ok {
 		if n, valid := toInt(v); valid {
 			product.CostPrice = n
-			newSnapMap["cost_price"] = product.CostPrice
 		}
 	}
-
 	if v, ok := getVal(input, "stock", "Stock"); ok {
 		if n, valid := toInt(v); valid {
 			product.Stock = n
-			newSnapMap["stock"] = product.Stock
 		}
 	}
-
 	if v, ok := getVal(input, "unit", "Unit"); ok {
-		strVal := fmt.Sprint(v)
-		if strVal != "" {
-			product.Unit = strVal
-			newSnapMap["unit"] = product.Unit
+		if str := fmt.Sprint(v); str != "" {
+			product.Unit = str
 		}
 	}
-
 	if v, ok := getVal(input, "min_stock", "minStock", "MinStock"); ok {
 		if n, valid := toInt(v); valid {
 			product.MinStock = n
-			newSnapMap["min_stock"] = product.MinStock
 		}
 	}
-
 	if v, ok := getVal(input, "shelf_location", "shelfLocation", "ShelfLocation"); ok {
 		product.ShelfLocation = fmt.Sprint(v)
-		newSnapMap["shelf_location"] = product.ShelfLocation
 	}
 
 	product.UpdatedAt = time.Now()
@@ -223,84 +215,46 @@ func UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	newSnap, _ := json.Marshal(newSnapMap)
+	// 3. Tangkap snapshot sesudah diubah & simpan ke audit_logs (Hanya 1 baris)
+	newSnapMap := map[string]interface{}{
+		"barcode":        product.Barcode,
+		"name":           product.Name,
+		"category":       product.Category,
+		"price":          product.Price,
+		"cost_price":     product.CostPrice,
+		"stock":          product.Stock,
+		"unit":           product.Unit,
+		"min_stock":      product.MinStock,
+		"shelf_location": product.ShelfLocation,
+	}
 
-	actor := ""
-	if v, ok := getVal(input, "actor", "Actor", "user", "User"); ok {
-		if strVal := fmt.Sprint(v); strVal != "" {
-			actor = strVal
+	oldJSON, _ := json.Marshal(oldSnapMap)
+	newJSON, _ := json.Marshal(newSnapMap)
+
+	actor := c.GetHeader("X-User-Name")
+	if actor == "" {
+		if act, ok := input["actor"]; ok && fmt.Sprint(act) != "" {
+			actor = fmt.Sprint(act)
+		} else {
+			actor = "Sistem"
 		}
 	}
-	if actor == "" {
-		actor = c.GetHeader("X-User-Name")
-	}
-	if actor == "" {
-		actor = c.Query("actor")
-	}
-	if actor == "" {
-		actor = "Sistem"
-	}
 
-	config.DB.Create(&models.AuditLog{
+	audit := models.AuditLog{
 		Module:    "PRODUCTS",
 		Action:    "UPDATE",
 		User:      actor,
 		Details:   fmt.Sprintf("Pembaruan master barang: %s (%s)", product.Name, product.Barcode),
-		OldValues: string(oldSnap),
-		NewValues: string(newSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
+		OldValues: string(oldJSON),
+		NewValues: string(newJSON),
+		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+		CreatedAt: time.Now(),
+	}
+	_ = config.DB.Create(&audit)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
 }
 
-// PATCH /api/v1/products/:barcode/archive
-func ToggleArchiveProduct(c *gin.Context) {
-	if config.DB == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
-		return
-	}
-	barcode := c.Param("barcode")
-	var product models.Product
-	if err := config.DB.First(&product, "barcode = ?", barcode).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
-		return
-	}
-
-	oldActive := product.IsActive
-	product.IsActive = !product.IsActive
-	product.UpdatedAt = time.Now()
-	config.DB.Save(&product)
-
-	oldSnap, _ := json.Marshal(map[string]interface{}{"is_active": oldActive})
-	newSnap, _ := json.Marshal(map[string]interface{}{"is_active": product.IsActive})
-
-	actor := c.GetHeader("X-User-Name")
-	if actor == "" {
-		actor = c.Query("actor")
-	}
-	if actor == "" {
-		actor = "Sistem"
-	}
-	actionName := "ARCHIVE"
-	if product.IsActive {
-		actionName = "RESTORE"
-	}
-
-	config.DB.Create(&models.AuditLog{
-		Module:    "PRODUCTS",
-		Action:    actionName,
-		User:      actor,
-		Details:   fmt.Sprintf("Ubah status aktif produk: %s (%s)", product.Name, product.Barcode),
-		OldValues: string(oldSnap),
-		NewValues: string(newSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
-}
-
-// DELETE /api/v1/products/:barcode
 func DeleteProduct(c *gin.Context) {
 	if config.DB == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
@@ -313,8 +267,7 @@ func DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	oldSnap, _ := json.Marshal(product)
-	if err := config.DB.Delete(&product).Error; err != nil {
+		if err := config.DB.Delete(&product).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
@@ -326,19 +279,31 @@ func DeleteProduct(c *gin.Context) {
 	if actor == "" {
 		actor = "Sistem"
 	}
-	config.DB.Create(&models.AuditLog{
-		Module:    "PRODUCTS",
-		Action:    "DELETE",
-		User:      actor,
-		Details:   fmt.Sprintf("Menghapus permanen produk: %s (%s)", product.Name, product.Barcode),
-		OldValues: string(oldSnap),
-		Timestamp: time.Now().Format("02 Jan 2006, 15:04:05"),
-	})
+	// Audit otomatis ditangani oleh GORM plugin
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Produk berhasil dihapus"})
 }
 
 // GET /api/v1/products/:barcode/audit-logs
 func GetProductAuditLogs(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": []interface{}{}})
+	if config.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
+		return
+	}
+	barcode := c.Param("barcode")
+
+	var logs []models.AuditLog
+	searchPattern := "%" + barcode + "%"
+
+	err := config.DB.Where(
+		"module = ? AND (details LIKE ? OR old_values LIKE ? OR new_values LIKE ?)",
+		"PRODUCTS", searchPattern, searchPattern, searchPattern,
+	).Order("created_at desc").Limit(50).Find(&logs).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal mengambil riwayat audit: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": logs})
 }

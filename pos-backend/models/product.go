@@ -6,7 +6,9 @@ type Product struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	Barcode       string    `json:"barcode" gorm:"uniqueIndex;not null"`
 	Name          string    `json:"name" gorm:"not null"`
-	Category      string    `json:"category" gorm:"not null"`
+	Category      string    `gorm:"type:varchar(100)" json:"category"`
+	CategoryID    *uint     `gorm:"index" json:"category_id,omitempty"`
+	CategoryRef   *Category `gorm:"foreignKey:CategoryID" json:"category_ref,omitempty"`
 	Price         int       `json:"price" gorm:"not null"`
 	CostPrice     int       `json:"cost_price" gorm:"not null;default:0"`
 	Stock         int       `json:"stock" gorm:"default:0"`
