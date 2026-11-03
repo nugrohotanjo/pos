@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Product, Brand } from '../../types';
 import { CategoryCascadeModal } from '../../components/CategoryCascadeModal';
+import { CustomSelect } from "../../components/CustomSelect";
+import { ProductVariationSection, type VariantTypeState, type VariantItemState } from './components/ProductVariationSection';
+import { ProductWholesaleSection, type WholesalePriceState } from './components/ProductWholesaleSection';
 import { FieldTooltip } from '../../components/common/FieldTooltip';
 import { getBrandsFromApi, createBrandToApi } from '../../utils/api';
 import {
@@ -62,16 +65,45 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
   );
 
   // Brand States
+    const [brands, setBrands] = useState<Brand[]>([]);
+  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+
+  useEffect(() => {
+    getBrandsFromApi()
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setBrands(data);
+        }
+      })
+      .catch((err) => console.error('Error fetching brands:', err));
+  }, []);
+
   const [brand, setBrand] = useState((initialProduct as any)?.brand || 'Tidak Ada Merk');
   const [brandId, setBrandId] = useState<number | undefined>(
     (initialProduct as any)?.brand_id || (initialProduct as any)?.brandId
   );
   const [brandsList, setBrandsList] = useState<Brand[]>([]);
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
-  const [newBrandName, setNewBrandName] = useState('');
   const [isSavingBrand, setIsSavingBrand] = useState(false);
 
   // Price & Stock States (Kosong jika tambah baru)
+  // State Variasi & Grosir
+  const [hasVariant, setHasVariant] = useState<boolean>(initialProduct?.has_variant || false);
+  const [variantTypes, setVariantTypes] = useState<VariantTypeState[]>(
+    (initialProduct as any)?.variant_types?.map((vt: any) => ({
+      name: vt.name,
+      options: typeof vt.options === 'string' ? JSON.parse(vt.options) : (vt.options || []),
+    })) || []
+  );
+  const [variants, setVariants] = useState<VariantItemState[]>(
+    (initialProduct as any)?.variants || []
+  );
+  const [wholesalePrices, setWholesalePrices] = useState<WholesalePriceState[]>(
+    (initialProduct as any)?.wholesale_prices || []
+  );
+
   const [price, setPrice] = useState(
     initialProduct?.price != null ? String(initialProduct.price) : ''
   );
@@ -85,9 +117,76 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
   const [stock, setStock] = useState(
     initialProduct?.stock != null ? String(initialProduct.stock) : '0'
   );
+
+  // Auto-kalkulasi total stok produk master dari varian saat variasi aktif
+  useEffect(() => {
+    if (hasVariant && variants.length > 0) {
+      const total = variants.reduce((acc, curr) => acc + (Number(curr.stock) || 0), 0);
+      setStock(String(total));
+    }
+  }, [hasVariant, variants]);
+
   const [minStock, setMinStock] = useState(
     String((initialProduct as any)?.min_stock ?? (initialProduct as any)?.minStock ?? '5')
   );
+
+  // Sync state ketika initialProduct berubah/selesai di-fetch
+  useEffect(() => {
+    if (!initialProduct) return;
+
+    setBarcode(initialProduct.barcode || "");
+    setName(initialProduct.name || "");
+    setCategory(initialProduct.category || "");
+    setCategoryId((initialProduct as any).category_id || (initialProduct as any).categoryId);
+    setBrand((initialProduct as any).brand || "Tidak Ada Merk");
+    setBrandId((initialProduct as any).brand_id || (initialProduct as any).brandId);
+    setPrice(initialProduct.price != null ? String(initialProduct.price) : "");
+    setCostPrice((initialProduct as any).cost_price != null ? String((initialProduct as any).cost_price) : (initialProduct as any).costPrice != null ? String((initialProduct as any).costPrice) : "");
+    setStock(initialProduct.stock != null ? String(initialProduct.stock) : "0");
+    setMinStock(String((initialProduct as any).min_stock ?? (initialProduct as any).minStock ?? "5"));
+
+    const pHasVariant = Boolean(initialProduct.has_variant);
+    setHasVariant(pHasVariant);
+
+    const rawTypes = (initialProduct as any).variant_types || (initialProduct as any).VariantTypes || [];
+    const parsedTypes: VariantTypeState[] = rawTypes.map((vt: any) => {
+      let opts: string[] = [];
+      if (typeof vt.options === "string") {
+        try { opts = JSON.parse(vt.options); } catch (e) { opts = []; }
+      } else if (Array.isArray(vt.options)) {
+        opts = vt.options;
+      }
+      return {
+        name: vt.name || "",
+        options: opts,
+      };
+    });
+    setVariantTypes(parsedTypes);
+
+    const rawVariants = (initialProduct as any).variants || (initialProduct as any).Variants || [];
+    const mappedVariants: VariantItemState[] = rawVariants.map((v: any) => {
+      const opts = v.option_values && v.option_values.length > 0 
+        ? v.option_values 
+        : [v.option1_value, v.option2_value].filter(Boolean);
+      return {
+        id: v.id,
+        sku_code: v.sku_code || "",
+        barcode: v.barcode || "",
+        option_values: opts,
+        option1_value: v.option1_value || (opts[0] || ""),
+        option2_value: v.option2_value || (opts[1] || ""),
+        price: Number(v.price) || 0,
+        cost_price: Number(v.cost_price) || 0,
+        stock: Number(v.stock) || 0,
+        image_url: v.image_url || "",
+      };
+    });
+    setVariants(mappedVariants);
+
+    const rawWholesale = (initialProduct as any).wholesale_prices || (initialProduct as any).WholesalePrices || [];
+    setWholesalePrices(rawWholesale);
+  }, [initialProduct]);
+
   const [unit, setUnit] = useState(initialProduct?.unit || 'Pcs');
   const [isActive, setIsActive] = useState(initialProduct?.isActive !== false);
 
@@ -100,13 +199,10 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
   const [warrantyType, setWarrantyType] = useState(
     (initialProduct as any)?.warranty_type || (initialProduct as any)?.warrantyType || ''
   );
-  const [isCustom, setIsCustom] = useState<string>(
-    (initialProduct as any)?.is_custom != null || (initialProduct as any)?.isCustom != null
-      ? (initialProduct as any)?.is_custom || (initialProduct as any)?.isCustom
-        ? 'Ya'
-        : 'Tidak'
-      : ''
-  );
+  const [isCustom, setIsCustom] = useState<boolean | null>(() => {
+    const rawVal = (initialProduct as any)?.is_custom ?? (initialProduct as any)?.isCustom;
+    return typeof rawVal === "boolean" ? rawVal : null;
+  });
   const [certNumber, setCertNumber] = useState(
     (initialProduct as any)?.cert_number || (initialProduct as any)?.certNumber || ''
   );
@@ -173,7 +269,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
       setErrorMsg('Merek / Brand produk wajib dipilih!');
       return;
     }
-    if (!category.trim()) {
+    if (!categoryId && (!category || !category.trim())) {
       setErrorMsg('Kategori produk wajib dipilih!');
       return;
     }
@@ -197,6 +293,10 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
         brand_id: brandId,
         price: Number(price) || 0,
         cost_price: Number(costPrice) || 0,
+        has_variant: hasVariant,
+        variant_types: hasVariant ? variantTypes : [],
+        variants: hasVariant ? variants : [],
+        wholesale_prices: wholesalePrices,
         stock: Number(stock) || 0,
         min_stock: Number(minStock) || 0,
         unit: unit.trim() || 'Pcs',
@@ -206,7 +306,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
         origin: origin.trim(),
         warranty_period: warrantyPeriod.trim(),
         warranty_type: warrantyType.trim(),
-        is_custom: isCustom === 'Ya' ? true : isCustom === 'Tidak' ? false : undefined,
+        is_custom: typeof isCustom === "boolean" ? isCustom : false,
         cert_number: certNumber.trim(),
       });
     } catch (err: any) {
@@ -291,16 +391,16 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
 
       {/* Konten Form */}
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kolom Kiri: Identitas Barang, Atribut Lainnya & Kategori */}
+        {/* Kolom Kiri: Identitas Barang, Atribut Lainnya, Variasi & Grosir */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Card Identitas Barang */}
+          {/* 1. Card Identitas Barang (dengan Kategori) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Package size={16} className="text-indigo-600" />
-                <span>Identitas Barang</span>
-              </h3>
-              <span className="text-[11px] text-slate-400">Barcode & Nama Produk</span>
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-indigo-600" />
+                <h3 className="text-sm font-bold text-slate-900">Identitas Barang</h3>
+              </div>
+              <span className="text-xs text-slate-400">Barcode, Kategori & Nama Produk</span>
             </div>
 
             <div className="space-y-4">
@@ -308,7 +408,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Nama Barang / Produk <span className="text-rose-500">*</span>
-                  <FieldTooltip content="Nama lengkap produk, ukuran, atau varian. Teks ini dicari oleh kasir dan tercetak pada struk belanja." />
+                  <FieldTooltip content="Nama spesifik barang yang akan dicetak di struk belanja." />
                 </label>
                 <input
                   type="text"
@@ -316,65 +416,85 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                   placeholder="Contoh: Kaos Polos Katun Combed 30s Hitam L"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
 
-              {/* Master Merek / Brand */}
+              {/* Merek / Brand */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-slate-700">
                     Merek / Brand <span className="text-rose-500">*</span>
-                    <FieldTooltip content="Merek produk dagang. Pilih 'Tidak Ada Merk' jika produk generic / no-brand (misal: aksesoris polos, curah)." />
+                    <FieldTooltip content="Merek pembuat barang atau pilih 'Tidak Ada Merk' jika generic." />
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowAddBrandModal(true)}
-                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                    className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1"
                   >
-                    + Tambah Merek Baru
+                    <Plus size={12} /> Tambah Merek Baru
                   </button>
                 </div>
-                <select
-                  value={brand}
-                  onChange={(e) => {
-                    const selectedVal = e.target.value;
-                    setBrand(selectedVal);
-                    const found = brandsList.find((b) => b.name === selectedVal);
-                    setBrandId(found ? found.id : undefined);
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700"
-                >
-                  <option value="Tidak Ada Merk">Tidak Ada Merk (Generic / Polos)</option>
-                  {brandsList
-                    .filter((b) => b.name !== 'Tidak Ada Merk')
-                    .map((b) => (
-                      <option key={b.id} value={b.name}>
+                <div className="relative">
+                  <select
+                    value={brandId || ''}
+                    onChange={(e) => {
+                      const rawVal = e.target.value;
+                      if (!rawVal) {
+                        setBrandId(undefined);
+                        setBrand('Tidak Ada Merk');
+                      } else {
+                        const id = Number(rawVal);
+                        setBrandId(id || undefined);
+                        const b = (brandsList || []).find((x: any) => x.id === id);
+                        if (b) setBrand(b.name);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                  >
+                    <option value="">Tidak Ada Merk (Generic / Polos)</option>
+                    {(brandsList || []).map((b: any) => (
+                      <option key={b.id} value={b.id}>
                         {b.name}
                       </option>
                     ))}
-                </select>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                </div>
               </div>
 
-              {/* Barcode & Satuan */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
+              {/* Kategori & Klasifikasi Bertingkat */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Kategori & Klasifikasi Bertingkat <span className="text-rose-500">*</span>
+                  <FieldTooltip content="Pilih kategori bertingkat hingga sub-kategori terdalam." />
+                </label>
+                <CategoryCascadeModal
+                  value={category}
+                  categoryId={categoryId}
+                  onChange={(catName, catId) => {
+                    setCategory(catName);
+                    setCategoryId(catId);
+                  }}
+                />
+              </div>
+
+              {/* Barcode & Satuan Unit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Barcode / SKU <span className="text-rose-500">*</span>
-                    <FieldTooltip content="Kode barcode fisik produk atau buat SKU unik manual jika produk tidak memiliki barcode fisik." />
+                    <FieldTooltip content="Scan barcode fisik produk atau ketik manual." />
                   </label>
                   <div className="relative">
-                    <Barcode className="absolute left-3.5 top-3 text-slate-400" size={16} />
+                    <Barcode size={15} className="absolute left-3.5 top-3 text-slate-400" />
                     <input
                       type="text"
                       required
-                      disabled={isEdit}
                       placeholder="899..."
                       value={barcode}
                       onChange={(e) => setBarcode(e.target.value)}
-                      className={`w-full pl-10 pr-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none ${
-                        isEdit ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:bg-white'
-                      }`}
+                      className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </div>
                 </div>
@@ -382,36 +502,44 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Satuan Unit
-                    <FieldTooltip content="Satuan takaran jual produk saat transaksi (misal: Pcs, Botol, Pack, Dus, Kg)." />
+                    <FieldTooltip content="Satuan hitung terkecil penjualan barang." />
                   </label>
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700"
-                  >
-                    <option value="Pcs">Pcs (Pieces)</option>
-                    <option value="Pack">Pack</option>
-                    <option value="Dus">Dus / Box</option>
-                    <option value="Lusin">Lusin</option>
-                    <option value="Set">Set</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={unit}
+                      onChange={(e) => setUnit(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                    >
+                      <option value="Pcs">Pcs (Pieces)</option>
+                      <option value="Pack">Pack</option>
+                      <option value="Box">Box / Kotak</option>
+                      <option value="Lusin">Lusin (12 Pcs)</option>
+                      <option value="Kodi">Kodi (20 Pcs)</option>
+                      <option value="Kg">Kg (Kilogram)</option>
+                      <option value="Gram">Gram</option>
+                      <option value="Liter">Liter</option>
+                      <option value="Meter">Meter</option>
+                      <option value="Set">Set</option>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 
-              {/* Status Publikasi Produk */}
-              <div className="pt-2 border-t border-slate-100">
+              {/* Status Publikasi */}
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Status Publikasi Produk
-                  <FieldTooltip content="Aktif: Langsung bisa discan dan dijual di kasir POS. Tidak Aktif: Disimpan sebagai arsip/draft dan disembunyikan dari katalog kasir." />
+                  <FieldTooltip content="Tentukan apakah produk langsung siap dijual di kasir atau diarsipkan sebagai draft." />
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setIsActive(false)}
-                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       !isActive
-                        ? 'bg-rose-50 border-rose-300 text-rose-600 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                        ? 'bg-rose-50 border-rose-200 text-rose-700 ring-2 ring-rose-500/20'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-rose-500" />
@@ -420,10 +548,10 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsActive(true)}
-                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       isActive
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-600 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-500/20'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -434,444 +562,129 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
             </div>
           </div>
 
-          {/* === CARD BARU: ATRIBUT LAINNYA === */}
+          {/* 2. Card Atribut Lainnya */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span>Atribut Lainnya</span>
-              </h3>
-              <span className="text-[11px] text-slate-400">Opsional / Spesifikasi Tambahan</span>
+              <h3 className="text-sm font-bold text-slate-900">Atribut Lainnya</h3>
+              <span className="text-xs text-slate-400">Opsional / Spesifikasi Tambahan</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* 1. Dimensi (P x L x T) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Dimensi (P x L x T)
                 </label>
                 <input
                   type="text"
-                  placeholder="Silakan isi (contoh: 33x98x98)"
                   value={dimension}
-                  onChange={(e) => handleDimensionChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400"
+                  onChange={(e) => setDimension(e.target.value)}
+                  placeholder="Silakan isi (contoh: 33x98x98)"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
 
-              {/* 2. Asal Produk (Combobox / Free Input) */}
-              <div className="relative">
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Asal Produk
                 </label>
-                <div
-                  onClick={() => {
-                    setOpenDropdown(openDropdown === 'origin' ? null : 'origin');
-                    setSearchFilter('');
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer flex items-center justify-between text-slate-700"
-                >
-                  <span className={origin ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-                    {origin || 'Silakan pilih'}
-                  </span>
-                  <ChevronDown size={16} className="text-slate-400" />
+                <div className="relative">
+                  <select
+                    value={origin}
+                    onChange={(e) => setOrigin(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                  >
+                    <option value="">Silakan pilih</option>
+                    {PRESET_ORIGINS.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
                 </div>
-
-                {openDropdown === 'origin' && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 z-40 bg-white border border-slate-200 rounded-xl shadow-xl p-2 space-y-2">
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Ketik nama negara / cari..."
-                        value={searchFilter}
-                        onChange={(e) => setSearchFilter(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && searchFilter.trim()) {
-                            e.preventDefault();
-                            setOrigin(searchFilter.trim());
-                            setOpenDropdown(null);
-                          }
-                        }}
-                        className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="max-h-44 overflow-y-auto space-y-1">
-                      {searchFilter.trim() && !PRESET_ORIGINS.some((c) => c.toLowerCase() === searchFilter.toLowerCase()) && (
-                        <div
-                          onClick={() => {
-                            setOrigin(searchFilter.trim());
-                            setOpenDropdown(null);
-                          }}
-                          className="px-3 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer flex items-center gap-1.5"
-                        >
-                          <Plus size={14} /> Gunakan "{searchFilter.trim()}"
-                        </div>
-                      )}
-                      {PRESET_ORIGINS.filter((c) =>
-                        c.toLowerCase().includes(searchFilter.toLowerCase())
-                      ).map((c) => (
-                        <div
-                          key={c}
-                          onClick={() => {
-                            setOrigin(c);
-                            setOpenDropdown(null);
-                          }}
-                          className={`px-3 py-2 text-xs rounded-lg cursor-pointer flex items-center justify-between ${
-                            origin === c ? 'bg-indigo-50 text-indigo-600 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <span>{c}</span>
-                          {origin === c && <Check size={14} />}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* 3. Masa Garansi */}
-              <div className="relative">
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Masa Garansi
                 </label>
-                <div
-                  onClick={() => {
-                    setOpenDropdown(openDropdown === 'warranty_period' ? null : 'warranty_period');
-                    setShowCustomInputBox(false);
-                    setSearchFilter('');
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer flex items-center justify-between text-slate-700"
-                >
-                  <span className={warrantyPeriod ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-                    {warrantyPeriod || 'Silakan pilih'}
-                  </span>
-                  <ChevronDown size={16} className="text-slate-400" />
-                </div>
-
-                {openDropdown === 'warranty_period' && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 z-40 bg-white border border-slate-200 rounded-xl shadow-xl p-2 space-y-2">
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Masukkan min. 1 karakter"
-                        value={searchFilter}
-                        onChange={(e) => setSearchFilter(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="max-h-44 overflow-y-auto space-y-1">
-                      {PRESET_WARRANTY_PERIODS.filter((p) =>
-                        p.toLowerCase().includes(searchFilter.toLowerCase())
-                      ).map((p) => (
-                        <div
-                          key={p}
-                          onClick={() => {
-                            setWarrantyPeriod(p);
-                            setOpenDropdown(null);
-                          }}
-                          className={`px-3 py-2 text-xs rounded-lg cursor-pointer flex items-center justify-between ${
-                            warrantyPeriod === p ? 'bg-indigo-50 text-indigo-600 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <span>{p}</span>
-                          {warrantyPeriod === p && <Check size={14} />}
-                        </div>
-                      ))}
-
-                      {/* Item Pilihan Isi Sendiri */}
-                      {customWarrantyPeriods.length > 0 && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <span className="text-[10px] font-bold text-slate-400 px-3 uppercase tracking-wider">
-                            Pilihan Isi Sendiri
-                          </span>
-                          {customWarrantyPeriods.map((cp) => (
-                            <div
-                              key={cp}
-                              onClick={() => {
-                                setWarrantyPeriod(cp);
-                                setOpenDropdown(null);
-                              }}
-                              className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer flex items-center justify-between ${
-                                warrantyPeriod === cp ? 'text-rose-600 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                            >
-                              <span>{cp}</span>
-                              {warrantyPeriod === cp && <Check size={14} />}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer Tambah Nilai Atribut Custom */}
-                    <div className="pt-2 border-t border-slate-100">
-                      {showCustomInputBox ? (
-                        <div className="flex items-center gap-1.5 p-1">
-                          <input
-                            type="text"
-                            placeholder="Contoh: 6 Tahun"
-                            value={customInputText}
-                            onChange={(e) => setCustomInputText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && customInputText.trim()) {
-                                e.preventDefault();
-                                const val = customInputText.trim();
-                                if (!customWarrantyPeriods.includes(val)) {
-                                  setCustomWarrantyPeriods((prev) => [...prev, val]);
-                                }
-                                setWarrantyPeriod(val);
-                                setCustomInputText('');
-                                setShowCustomInputBox(false);
-                                setOpenDropdown(null);
-                              }
-                            }}
-                            className="flex-1 px-2.5 py-1 text-xs border border-slate-300 rounded-lg outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (customInputText.trim()) {
-                                const val = customInputText.trim();
-                                if (!customWarrantyPeriods.includes(val)) {
-                                  setCustomWarrantyPeriods((prev) => [...prev, val]);
-                                }
-                                setWarrantyPeriod(val);
-                                setCustomInputText('');
-                                setShowCustomInputBox(false);
-                                setOpenDropdown(null);
-                              }
-                            }}
-                            className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowCustomInputBox(false);
-                              setCustomInputText('');
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setShowCustomInputBox(true)}
-                          className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                        >
-                          <Plus size={14} /> Tambah nilai atribut
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <CustomSelect
+                  value={warrantyPeriod}
+                  onChange={setWarrantyPeriod}
+                  presetOptions={PRESET_WARRANTY_PERIODS}
+                  placeholder="Silakan pilih"
+                />
               </div>
 
-              {/* 4. Jenis Garansi */}
-              <div className="relative">
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Jenis Garansi
                 </label>
-                <div
-                  onClick={() => {
-                    setOpenDropdown(openDropdown === 'warranty_type' ? null : 'warranty_type');
-                    setShowCustomInputBox(false);
-                    setSearchFilter('');
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer flex items-center justify-between text-slate-700"
-                >
-                  <span className={warrantyType ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-                    {warrantyType || 'Silakan pilih'}
-                  </span>
-                  <ChevronDown size={16} className="text-slate-400" />
-                </div>
-
-                {openDropdown === 'warranty_type' && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 z-40 bg-white border border-slate-200 rounded-xl shadow-xl p-2 space-y-2">
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Masukkan min. 1 karakter"
-                        value={searchFilter}
-                        onChange={(e) => setSearchFilter(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="max-h-44 overflow-y-auto space-y-1">
-                      {PRESET_WARRANTY_TYPES.filter((t) =>
-                        t.toLowerCase().includes(searchFilter.toLowerCase())
-                      ).map((t) => (
-                        <div
-                          key={t}
-                          onClick={() => {
-                            setWarrantyType(t);
-                            setOpenDropdown(null);
-                          }}
-                          className={`px-3 py-2 text-xs rounded-lg cursor-pointer flex items-center justify-between ${
-                            warrantyType === t ? 'bg-indigo-50 text-indigo-600 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <span>{t}</span>
-                          {warrantyType === t && <Check size={14} />}
-                        </div>
-                      ))}
-
-                      {/* Item Pilihan Isi Sendiri */}
-                      {customWarrantyTypes.length > 0 && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <span className="text-[10px] font-bold text-slate-400 px-3 uppercase tracking-wider">
-                            Pilihan Isi Sendiri
-                          </span>
-                          {customWarrantyTypes.map((ct) => (
-                            <div
-                              key={ct}
-                              onClick={() => {
-                                setWarrantyType(ct);
-                                setOpenDropdown(null);
-                              }}
-                              className={`px-3 py-1.5 text-xs rounded-lg cursor-pointer flex items-center justify-between ${
-                                warrantyType === ct ? 'text-rose-600 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                            >
-                              <span>{ct}</span>
-                              {warrantyType === ct && <Check size={14} />}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-100">
-                      {showCustomInputBox ? (
-                        <div className="flex items-center gap-1.5 p-1">
-                          <input
-                            type="text"
-                            placeholder="Contoh: Garansi Distributor Resmi"
-                            value={customInputText}
-                            onChange={(e) => setCustomInputText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && customInputText.trim()) {
-                                e.preventDefault();
-                                const val = customInputText.trim();
-                                if (!customWarrantyTypes.includes(val)) {
-                                  setCustomWarrantyTypes((prev) => [...prev, val]);
-                                }
-                                setWarrantyType(val);
-                                setCustomInputText('');
-                                setShowCustomInputBox(false);
-                                setOpenDropdown(null);
-                              }
-                            }}
-                            className="flex-1 px-2.5 py-1 text-xs border border-slate-300 rounded-lg outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (customInputText.trim()) {
-                                const val = customInputText.trim();
-                                if (!customWarrantyTypes.includes(val)) {
-                                  setCustomWarrantyTypes((prev) => [...prev, val]);
-                                }
-                                setWarrantyType(val);
-                                setCustomInputText('');
-                                setShowCustomInputBox(false);
-                                setOpenDropdown(null);
-                              }
-                            }}
-                            className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowCustomInputBox(false);
-                              setCustomInputText('');
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setShowCustomInputBox(true)}
-                          className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                        >
-                          <Plus size={14} /> Tambah nilai atribut
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <CustomSelect
+                  value={warrantyType}
+                  onChange={setWarrantyType}
+                  presetOptions={PRESET_WARRANTY_TYPES}
+                  placeholder="Silakan pilih"
+                />
               </div>
 
-              {/* 5. Produk Custom (Ya / Tidak) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Produk Custom
                 </label>
-                <select
-                  value={isCustom}
-                  onChange={(e) => setIsCustom(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700"
-                >
-                  <option value="">Silakan pilih</option>
-                  <option value="Ya">Ya</option>
-                  <option value="Tidak">Tidak</option>
-                </select>
+                <div className="relative">
+                  <select
+                    value={isCustom === true ? 'Ya' : isCustom === false ? 'Tidak' : ''}
+                    onChange={(e) => {
+                      if (e.target.value === 'Ya') setIsCustom(true);
+                      else if (e.target.value === 'Tidak') setIsCustom(false);
+                      else setIsCustom(null);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                  >
+                    <option value="">Silakan pilih</option>
+                    <option value="Ya">Ya</option>
+                    <option value="Tidak">Tidak</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                </div>
               </div>
 
-              {/* 6. No. Sertifikat (POSTEL / BPOM / SN) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   No.Sertifikat (POSTEL)
                 </label>
                 <input
                   type="text"
-                  placeholder="Silakan isi"
                   value={certNumber}
                   onChange={(e) => setCertNumber(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400"
+                  placeholder="Silakan isi"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
             </div>
           </div>
 
-          {/* Card Kategori Bertingkat */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Layers size={16} className="text-indigo-600" />
-                <span>Kategori & Klasifikasi Bertingkat</span>
-                <span className="text-rose-500">*</span>
-                <FieldTooltip content="Hierarki klasifikasi produk untuk memudahkan filter laporan penjualan, penataan rak, dan analisis margin per kategori." />
-              </h3>
-              <span className="text-[11px] text-slate-400">Pilih hingga level terdalam</span>
-            </div>
-            <div>
-              <CategoryCascadeModal
-                value={category}
-                categoryId={categoryId}
-                onChange={(catName, catId) => {
-                  setCategory(catName);
-                  setCategoryId(catId);
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        {/* 4. Informasi Penjualan & Variasi */}
+        <ProductVariationSection
+          hasVariant={hasVariant}
+          onToggleVariant={setHasVariant}
+          variantTypes={variantTypes}
+          setVariantTypes={setVariantTypes}
+          variants={variants}
+          setVariants={setVariants}
+          basePrice={Number(price) || 0}
+          baseCostPrice={Number(costPrice) || 0}
+          baseBarcode={barcode}
+        />
 
-        {/* Kolom Kanan: Harga & Stok */}
+        {/* 5. Harga Grosir (Tiered Wholesale) */}
+        <ProductWholesaleSection
+          wholesalePrices={wholesalePrices}
+          setWholesalePrices={setWholesalePrices}
+          regularPrice={Number(price) || 0}
+        />
+      </div>
+
+      {/* Kolom Kanan: Harga & Stok */}
         <div className="space-y-6">
           {/* Card Harga & Margin */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
@@ -921,6 +734,8 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
             </div>
           </div>
 
+
+
           {/* Card Manajemen Stok */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">
@@ -937,7 +752,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                   type="number"
                   min="0"
                   required
-                  value={stock}
+                  value={stock} disabled={hasVariant} title={hasVariant ? "Stok dikalkulasi otomatis dari variasi" : ""}
                   onChange={(e) => setStock(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />

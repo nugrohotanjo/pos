@@ -12,7 +12,6 @@ import (
 	"pos-backend/models"
 	
 	"github.com/gin-gonic/gin"
-	"strings"
 )
 
 // Helper untuk mengambil string dari map baik camelCase maupun snake_case
@@ -48,7 +47,7 @@ func GetProducts(c *gin.Context) {
 
 	var products []models.Product
 	_ = utils.PaginateAndFilter(c, config.DB, &models.Product{}, &products, utils.DataTablesOptions{
-		Preloads: []string{"CategoryRef"},
+		Preloads: []string{"CategoryRef", "BrandRef", "VariantTypes", "Variants", "WholesalePrices"},
 		SearchFields: []string{"name", "barcode"},
 		FilterFields: map[string]string{
 			"category": "category_id",
@@ -86,8 +85,8 @@ func CreateProduct(c *gin.Context) {
 	product := models.Product{
 		Barcode:       input.Barcode,
 		Name:          input.Name,
-				Price:         input.Price,
-		CostPrice:     input.CostPrice,
+				Price: float64(input.Price),
+		CostPrice: float64(input.CostPrice),
 		Stock:         input.Stock,
 		Unit:          input.Unit,
 		MinStock:      input.MinStock,
@@ -163,7 +162,7 @@ func UpdateProduct(c *gin.Context) {
 	}
 	barcode := c.Param("barcode")
 	var product models.Product
-	if err := config.DB.First(&product, "barcode = ?", barcode).Error; err != nil {
+	if err := config.DB.Preload("VariantTypes").Preload("Variants").Preload("WholesalePrices").First(&product, "barcode = ?", barcode).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
 		return
 	}
@@ -174,38 +173,64 @@ func UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	// 1. Tangkap snapshot sebelum diubah secara dinamis dari model
 	oldJSONBytes, _ := json.Marshal(product)
 	oldJSON := string(oldJSONBytes)
 
-	// 2. Terapkan perubahan field
-	if v, ok := getVal(input, "name", "Name"); ok {
-		if str := fmt.Sprint(v); str != "" {
-			product.Name = str
+	payloadBytes, _ := json.Marshal(input)
+	fmt.Printf("\n[DEBUG UPDATE PAYLOAD] Barcode: %s | Data: %s\n", barcode, string(payloadBytes))
+
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
 		}
+	}()
+
+	// 1. Bersihkan relasi lama secara terurut (anak ke induk)
+	if err := tx.Exec("DELETE FROM product_wholesale_prices WHERE product_id = ?", product.ID).Error; err != nil {
+		tx.Rollback()
+		fmt.Printf("[DB ERROR] Delete WholesalePrices: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal hapus harga grosir lama: " + err.Error()})
+		return
 	}
-	// Category & CategoryID Handler
+
+	if err := tx.Exec("DELETE FROM product_variants WHERE product_id = ?", product.ID).Error; err != nil {
+		tx.Rollback()
+		fmt.Printf("[DB ERROR] Delete Variants: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal hapus varian lama: " + err.Error()})
+		return
+	}
+
+	if err := tx.Exec("DELETE FROM product_variant_types WHERE product_id = ?", product.ID).Error; err != nil {
+		tx.Rollback()
+		fmt.Printf("[DB ERROR] Delete VariantTypes: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal hapus tipe varian lama: " + err.Error()})
+		return
+	}
+
+	// 2. Update Field Pokok Master Product
+	if v, ok := getVal(input, "name", "Name"); ok && fmt.Sprint(v) != "" {
+		product.Name = fmt.Sprint(v)
+	}
 	if v, ok := getVal(input, "category_id", "categoryId", "CategoryID"); ok {
 		if n, valid := toInt(v); valid && n > 0 {
 			cid := uint(n)
 			product.CategoryID = &cid
 		}
-	} else if v, ok := getVal(input, "category", "Category"); ok {
-		if str := fmt.Sprint(v); str != "" {
-			var cat models.Category
-			if err := config.DB.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", str).First(&cat).Error; err == nil {
-				product.CategoryID = &cat.ID
-			}
+	} else if v, ok := getVal(input, "category", "Category"); ok && fmt.Sprint(v) != "" {
+		var cat models.Category
+		if err := tx.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", fmt.Sprint(v)).First(&cat).Error; err == nil {
+			product.CategoryID = &cat.ID
 		}
 	}
 	if v, ok := getVal(input, "price", "Price"); ok {
 		if n, valid := toInt(v); valid {
-			product.Price = n
+			product.Price = float64(n)
 		}
 	}
 	if v, ok := getVal(input, "cost_price", "costPrice", "CostPrice"); ok {
 		if n, valid := toInt(v); valid {
-			product.CostPrice = n
+			product.CostPrice = float64(n)
 		}
 	}
 	if v, ok := getVal(input, "stock", "Stock"); ok {
@@ -213,10 +238,8 @@ func UpdateProduct(c *gin.Context) {
 			product.Stock = n
 		}
 	}
-	if v, ok := getVal(input, "unit", "Unit"); ok {
-		if str := fmt.Sprint(v); str != "" {
-			product.Unit = str
-		}
+	if v, ok := getVal(input, "unit", "Unit"); ok && fmt.Sprint(v) != "" {
+		product.Unit = fmt.Sprint(v)
 	}
 	if v, ok := getVal(input, "min_stock", "minStock", "MinStock"); ok {
 		if n, valid := toInt(v); valid {
@@ -229,79 +252,149 @@ func UpdateProduct(c *gin.Context) {
 	if v, ok := getVal(input, "is_active", "isActive", "IsActive"); ok {
 		if b, okBool := v.(bool); okBool {
 			product.IsActive = b
-		} else {
-			s := strings.ToLower(fmt.Sprint(v))
-			if s == "true" || s == "1" {
-				// product.IsActive follows user input
-			} else if s == "false" || s == "0" {
-				product.IsActive = false
-			}
 		}
 	}
+	if v, ok := getVal(input, "has_variant", "hasVariant", "HasVariant"); ok {
+		switch val := v.(type) {
+		case bool:
+			product.HasVariant = val
+		case string:
+			product.HasVariant = (val == "true" || val == "1")
+		}
+	}
+	if v, ok := getVal(input, "is_custom", "isCustom", "IsCustom"); ok {
+		if b, okBool := v.(bool); okBool {
+			product.IsCustom = &b
+		}
+	}
+	if v, ok := getVal(input, "dimension", "Dimension"); ok {
+		product.Dimension = fmt.Sprint(v)
+	}
+	if v, ok := getVal(input, "origin", "Origin"); ok {
+		product.Origin = fmt.Sprint(v)
+	}
+	if v, ok := getVal(input, "warranty_period", "warrantyPeriod", "WarrantyPeriod"); ok {
+		product.WarrantyPeriod = fmt.Sprint(v)
+	}
+	if v, ok := getVal(input, "warranty_type", "warrantyType", "WarrantyType"); ok {
+		product.WarrantyType = fmt.Sprint(v)
+	}
+	if v, ok := getVal(input, "cert_number", "certNumber", "CertNumber"); ok {
+		product.CertNumber = fmt.Sprint(v)
+	}
 
-			// Atribut Tambahan
-		if v, ok := getVal(input, "dimension", "Dimension"); ok {
-			product.Dimension = fmt.Sprint(v)
-		}
-		if v, ok := getVal(input, "origin", "Origin"); ok {
-			product.Origin = fmt.Sprint(v)
-		}
-		if v, ok := getVal(input, "warranty_period", "warrantyPeriod", "WarrantyPeriod"); ok {
-			product.WarrantyPeriod = fmt.Sprint(v)
-		}
-		if v, ok := getVal(input, "warranty_type", "warrantyType", "WarrantyType"); ok {
-			product.WarrantyType = fmt.Sprint(v)
-		}
-		if v, ok := getVal(input, "is_custom", "isCustom", "IsCustom"); ok {
-			if b, okBool := v.(bool); okBool {
-				product.IsCustom = &b
-			} else {
-				s := strings.ToLower(fmt.Sprint(v))
-				if s == "true" || s == "1" || s == "ya" {
-					tr := true
-					product.IsCustom = &tr
-				} else if s == "false" || s == "0" || s == "tidak" {
-					fl := false
-					product.IsCustom = &fl
+	// 3. Simpan Ulang Variant Types jika ada
+	if vRaw, ok := input["variant_types"]; ok && vRaw != nil {
+		if vtBytes, err := json.Marshal(vRaw); err == nil {
+			var vtList []models.VariantTypeInput
+			if err := json.Unmarshal(vtBytes, &vtList); err == nil {
+				for idx, item := range vtList {
+					optBytes, _ := json.Marshal(item.Options)
+					vtRecord := models.ProductVariantType{
+						ProductID: product.ID,
+						Name:      item.Name,
+						Options:   json.RawMessage(optBytes),
+						SortOrder: idx,
+					}
+					if err := tx.Create(&vtRecord).Error; err != nil {
+						tx.Rollback()
+						fmt.Printf("[DB ERROR] Insert VariantType: %v\n", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal simpan variant type: " + err.Error()})
+						return
+					}
 				}
 			}
 		}
-		if v, ok := getVal(input, "cert_number", "certNumber", "CertNumber"); ok {
-			product.CertNumber = fmt.Sprint(v)
+	}
+
+	// 4. Simpan Ulang Variants jika ada
+	if vRaw, ok := input["variants"]; ok && vRaw != nil {
+		if viBytes, err := json.Marshal(vRaw); err == nil {
+			var viList []models.VariantItemInput
+			if err := json.Unmarshal(viBytes, &viList); err == nil && len(viList) > 0 {
+				totalVariantStock := 0
+				for _, item := range viList {
+					totalVariantStock += item.Stock
+					variantRecord := models.ProductVariant{
+						ProductID:    product.ID,
+						SkuCode:      item.SkuCode,
+						Barcode:      item.Barcode,
+						Option1Value: item.Option1Value,
+						Option2Value: item.Option2Value,
+						Price:        item.Price,
+						CostPrice:    item.CostPrice,
+						Stock:        item.Stock,
+						ImageURL:     item.ImageURL,
+						CreatedAt:    time.Now(),
+						UpdatedAt:    time.Now(),
+					}
+					if err := tx.Create(&variantRecord).Error; err != nil {
+						tx.Rollback()
+						fmt.Printf("[DB ERROR] Insert Variant SKU %s: %v\n", item.SkuCode, err)
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": fmt.Sprintf("Gagal simpan varian (%s): %v", item.SkuCode, err)})
+						return
+					}
+				}
+				if product.HasVariant {
+					product.Stock = totalVariantStock
+				}
+			}
+		}
+	}
+
+	// 5. Simpan Ulang Wholesale Prices jika ada
+	if wRaw, ok := input["wholesale_prices"]; ok && wRaw != nil {
+		if wpBytes, err := json.Marshal(wRaw); err == nil {
+			var wpList []models.WholesalePriceInput
+			if err := json.Unmarshal(wpBytes, &wpList); err == nil {
+				for _, wp := range wpList {
+					wpRecord := models.ProductWholesalePrice{
+						ProductID: product.ID,
+						VariantID: wp.VariantID,
+						MinQty:    wp.MinQty,
+						MaxQty:    wp.MaxQty,
+						UnitPrice: wp.UnitPrice,
+						CreatedAt: time.Now(),
+					}
+					if err := tx.Create(&wpRecord).Error; err != nil {
+						tx.Rollback()
+						fmt.Printf("[DB ERROR] Insert WholesalePrice: %v\n", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal simpan harga grosir: " + err.Error()})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	product.UpdatedAt = time.Now()
+
+	// Putus asosiasi GORM agar tidak menimpa record baru
+	product.Variants = nil
+	product.VariantTypes = nil
+	product.WholesalePrices = nil
+
+	// Update eksplisit kolom boolean has_variant agar zero-value (false) tidak diabaikan GORM
+		if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).Update("has_variant", product.HasVariant).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update status varian: " + err.Error()})
+			return
 		}
 
-		product.UpdatedAt = time.Now()
-
-	if err := config.DB.Save(&product).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update produk: " + err.Error()})
+		if err := tx.Omit("CategoryRef", "BrandRef", "VariantTypes", "Variants", "WholesalePrices", "HasVariant").Updates(&product).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update master produk: " + err.Error()})
 		return
 	}
 
-	// 3. Tangkap snapshot sesudah diubah secara dinamis dari model
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal commit database: " + err.Error()})
+		return
+	}
+
+	// Audit Trail Logging
 	newJSONBytes, _ := json.Marshal(product)
 	newJSON := string(newJSONBytes)
-
-	// Hitung perubahan secara dinamis
-	var oldMap, newMap map[string]interface{}
-	_ = json.Unmarshal([]byte(oldJSON), &oldMap)
-	_ = json.Unmarshal([]byte(newJSON), &newMap)
-
-	var changedFields []string
-	ignoredFields := map[string]bool{"updated_at": true, "updatedAt": true, "created_at": true, "createdAt": true, "id": true, "ID": true, "deleted_at": true}
-	for k, nv := range newMap {
-		if ignoredFields[k] {
-			continue
-		}
-		ov := oldMap[k]
-		if fmt.Sprint(ov) != fmt.Sprint(nv) {
-			changedFields = append(changedFields, k)
-		}
-	}
-
-	diffText := ""
-	if len(changedFields) > 0 {
-		diffText = fmt.Sprintf(" (Perubahan: %s)", strings.Join(changedFields, ", "))
-	}
 
 	actor := c.GetHeader("X-User-Name")
 	if actor == "" {
@@ -316,15 +409,19 @@ func UpdateProduct(c *gin.Context) {
 		Module:    "PRODUCTS",
 		Action:    "UPDATE",
 		User:      actor,
-		Details: fmt.Sprintf("Pembaruan master barang: %s (%s)%s", product.Name, product.Barcode, diffText),
-		OldValues: string(oldJSON),
-		NewValues: string(newJSON),
+		Details:   fmt.Sprintf("Pembaruan master barang: %s (%s)", product.Name, product.Barcode),
+		OldValues: oldJSON,
+		NewValues: newJSON,
 		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
 		CreatedAt: time.Now(),
 	}
 	_ = config.DB.Create(&audit)
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
+	// Preload fresh data untuk response JSON ke frontend
+	var refreshedProduct models.Product
+	config.DB.Preload("CategoryRef").Preload("BrandRef").Preload("VariantTypes").Preload("Variants").Preload("WholesalePrices").First(&refreshedProduct, product.ID)
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": refreshedProduct})
 }
 
 func DeleteProduct(c *gin.Context) {
@@ -378,4 +475,24 @@ func GetProductAuditLogs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": logs})
+}
+
+// GetProductByBarcode mengembalikan detail produk tunggal beserta seluruh relasi varian dan grosir
+func GetProductByBarcode(c *gin.Context) {
+	if config.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database tidak terhubung"})
+		return
+	}
+	barcode := c.Param("barcode")
+	var product models.Product
+	if err := config.DB.Preload("CategoryRef").
+		Preload("BrandRef").
+		Preload("VariantTypes").
+		Preload("Variants").
+		Preload("WholesalePrices").
+		First(&product, "barcode = ?", barcode).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": product})
 }

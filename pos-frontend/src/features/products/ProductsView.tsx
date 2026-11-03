@@ -257,8 +257,24 @@ addProduct,
           setFilter('limit', newLimit);
           setFilter('page', 1);
         }}
-        onEdit={(p) => {
-          setEditingProduct(p);
+        onEdit={async (p) => {
+          try {
+            const token = localStorage.getItem("token") || localStorage.getItem("pos_token");
+            const res = await fetch(`/api/v1/products/${p.barcode}`, {
+              headers: {
+                "Authorization": token ? `Bearer ${token}` : "",
+                "Content-Type": "application/json"
+              }
+            });
+            const json = await res.json();
+            if (json.success && json.data) {
+              setEditingProduct(json.data);
+            } else {
+              setEditingProduct(p);
+            }
+          } catch (e) {
+            setEditingProduct(p);
+          }
           setViewMode('EDIT');
         }}
         onViewAudit={handleOpenAuditModal}

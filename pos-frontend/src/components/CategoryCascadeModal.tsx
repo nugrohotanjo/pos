@@ -210,7 +210,7 @@ export const CategoryCascadeModal: React.FC<CategoryCascadeModalProps> = ({
     if (activePath.length === 0) return;
     const finalNode = activePath[activePath.length - 1];
     setConfirmedPath(activePath);
-    onChange(finalNode.name, finalNode.id);
+    onChange(activePath.map(n => n.name).join(' > '), finalNode.id);
     setIsOpen(false);
   };
 

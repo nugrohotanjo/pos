@@ -76,6 +76,7 @@ func main() {
 			protected.GET("/brands", handlers.GetBrands)
 			protected.POST("/brands", handlers.CreateBrand)
 			protected.GET("/products", handlers.GetProducts)
+			protected.GET("/products/:barcode", handlers.GetProductByBarcode)
 			protected.POST("/products", handlers.CreateProduct)
 			protected.PUT("/products/:barcode", handlers.UpdateProduct)
 			protected.PATCH("/products/:barcode/archive", handlers.ToggleArchiveProduct)
