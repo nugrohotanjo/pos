@@ -82,3 +82,30 @@ func CreateBrand(c *gin.Context) {
 		"message": "Merek berhasil ditambahkan",
 	})
 }
+
+// DeleteBrand menghapus merek dari master data
+func DeleteBrand(c *gin.Context) {
+	id := c.Param("id")
+	var brand models.Brand
+	if err := config.DB.First(&brand, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Merek tidak ditemukan",
+		})
+		return
+	}
+
+	if err := config.DB.Delete(&brand).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Gagal menghapus merek",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Merek berhasil dihapus",
+	})
+}

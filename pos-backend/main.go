@@ -75,6 +75,11 @@ func main() {
 			// Brands & Products
 			protected.GET("/brands", handlers.GetBrands)
 			protected.POST("/brands", handlers.CreateBrand)
+			protected.DELETE("/brands/:id", handlers.DeleteBrand)
+
+			protected.GET("/shelves", handlers.GetShelves)
+			protected.POST("/shelves", handlers.CreateShelf)
+			protected.DELETE("/shelves/:id", handlers.DeleteShelf)
 			protected.GET("/products", handlers.GetProducts)
 			protected.GET("/products/:barcode", handlers.GetProductByBarcode)
 			protected.POST("/products", handlers.CreateProduct)

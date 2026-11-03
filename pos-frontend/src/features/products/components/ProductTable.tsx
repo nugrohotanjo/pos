@@ -65,15 +65,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({
       render: (p) => `Rp ${Number(p.price || 0).toLocaleString('id-ID')}`,
     },
     {
-      header: 'HPP Modal',
-      headerClassName: 'py-4 px-5 text-right whitespace-nowrap text-xs font-bold uppercase tracking-wider text-slate-700',
-      className: 'py-4 px-5 text-right text-slate-500 font-medium whitespace-nowrap',
-      render: (p) => {
-        const costPrice = Number(p.costPrice ?? (p as any).cost_price) || 0;
-        return `Rp ${costPrice.toLocaleString('id-ID')}`;
-      },
-    },
-    {
       header: 'Stok',
       headerClassName: 'py-4 px-5 text-center whitespace-nowrap text-xs font-bold uppercase tracking-wider text-slate-700',
       className: 'py-4 px-5 text-center whitespace-nowrap',

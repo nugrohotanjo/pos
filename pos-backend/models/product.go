@@ -39,6 +39,7 @@ type ProductWholesalePrice struct {
 }
 
 type Product struct {
+	Description string `gorm:"type:text" json:"description"`
 	ID              uint                    `json:"id" gorm:"primaryKey"`
 	Barcode         string                  `json:"barcode" gorm:"uniqueIndex;not null"`
 	Name            string                  `json:"name" gorm:"not null"`

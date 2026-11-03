@@ -1,3 +1,4 @@
+import { SearchableSelectWithManage, type OptionItem } from '../../components/SearchableSelectWithManage';
 import React, { useState, useEffect, useRef } from 'react';
 import type { Product, Brand } from '../../types';
 import { CategoryCascadeModal } from '../../components/CategoryCascadeModal';
@@ -5,7 +6,7 @@ import { CustomSelect } from "../../components/CustomSelect";
 import { ProductVariationSection, type VariantTypeState, type VariantItemState } from './components/ProductVariationSection';
 import { ProductWholesaleSection, type WholesalePriceState } from './components/ProductWholesaleSection';
 import { FieldTooltip } from '../../components/common/FieldTooltip';
-import { getBrandsFromApi, createBrandToApi } from '../../utils/api';
+import { getBrandsFromApi, createBrandToApi, deleteBrandToApi, getShelvesFromApi, createShelfToApi, deleteShelfToApi } from '../../utils/api';
 import {
   ArrowLeft,
   Save,
@@ -79,6 +80,82 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
       })
       .catch((err) => console.error('Error fetching brands:', err));
   }, []);
+
+    // Rak (Shelf Location) States
+  const [shelfLocation, setShelfLocation] = useState((initialProduct as any)?.shelf_location || (initialProduct as any)?.shelfLocation || "");
+  const [description, setDescription] = useState((initialProduct as any)?.description || '');
+  const [shelvesList, setShelvesList] = useState<OptionItem[]>([]);
+
+  useEffect(() => {
+    getShelvesFromApi().then((data) => setShelvesList(data));
+  }, []);
+  const [showAddShelfModal, setShowAddShelfModal] = useState(false);
+  const [newShelfName, setNewShelfName] = useState("");
+
+  
+  // Helper API Master Rak
+  const fetchShelvesApi = async (): Promise<OptionItem[]> => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/v1/shelves', {
+        credentials: 'include',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const json = await res.json();
+      return json.success && Array.isArray(json.data) ? json.data : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const createShelfApi = async (name: string): Promise<OptionItem | null> => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/v1/shelves', {
+        credentials: 'include',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ name }),
+      });
+      const json = await res.json();
+      return json.success ? json.data : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const deleteShelfApi = async (id: number | string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/v1/shelves/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const json = await res.json();
+      return json.success;
+    } catch {
+      return false;
+    }
+  };
+
+  const deleteBrandApi = async (id: number | string): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/v1/brands/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const json = await res.json();
+      return json.success;
+    } catch {
+      return false;
+    }
+  };
 
   const [brand, setBrand] = useState((initialProduct as any)?.brand || 'Tidak Ada Merk');
   const [brandId, setBrandId] = useState<number | undefined>(
@@ -183,6 +260,9 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
     });
     setVariants(mappedVariants);
 
+        if ((initialProduct as any)?.shelf_location && !shelvesList.includes((initialProduct as any)?.shelf_location)) {
+      setShelvesList((prev) => [...prev, (initialProduct as any)?.shelf_location]);
+    }
     const rawWholesale = (initialProduct as any).wholesale_prices || (initialProduct as any).WholesalePrices || [];
     setWholesalePrices(rawWholesale);
   }, [initialProduct]);
@@ -300,6 +380,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
         stock: Number(stock) || 0,
         min_stock: Number(minStock) || 0,
         unit: unit.trim() || 'Pcs',
+        shelf_location: shelfLocation.trim(),
         is_active: isActive,
         // Atribut baru
         dimension: dimension.trim(),
@@ -308,6 +389,7 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
         warranty_type: warrantyType.trim(),
         is_custom: typeof isCustom === "boolean" ? isCustom : false,
         cert_number: certNumber.trim(),
+        description: description.trim(),
       });
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal menyimpan data produk');
@@ -390,9 +472,9 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
       )}
 
       {/* Konten Form */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         {/* Kolom Kiri: Identitas Barang, Atribut Lainnya, Variasi & Grosir */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           {/* 1. Card Identitas Barang (dengan Kategori) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -422,46 +504,75 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
 
               {/* Merek / Brand */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Merek / Brand <span className="text-rose-500">*</span>
-                    <FieldTooltip content="Merek pembuat barang atau pilih 'Tidak Ada Merk' jika generic." />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddBrandModal(true)}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1"
-                  >
-                    <Plus size={12} /> Tambah Merek Baru
-                  </button>
-                </div>
-                <div className="relative">
-                  <select
-                    value={brandId || ''}
-                    onChange={(e) => {
-                      const rawVal = e.target.value;
-                      if (!rawVal) {
-                        setBrandId(undefined);
-                        setBrand('Tidak Ada Merk');
-                      } else {
-                        const id = Number(rawVal);
-                        setBrandId(id || undefined);
-                        const b = (brandsList || []).find((x: any) => x.id === id);
-                        if (b) setBrand(b.name);
-                      }
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
-                  >
-                    <option value="">Tidak Ada Merk (Generic / Polos)</option>
-                    {(brandsList || []).map((b: any) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Merek / Brand <span className="text-rose-500">*</span>
+                  <FieldTooltip content="Merek pembuat barang atau pilih 'Tidak Ada Merk' jika generic. Tekan Enter untuk langsung menambah merek baru." />
+                </label>
+                <SearchableSelectWithManage
+                  value={brand === "Tidak Ada Merk" ? "" : brand}
+                  options={(brandsList || []).map((b: any) => ({ id: b.id, name: b.name }))}
+                  placeholder="-- Pilih atau Cari Merek (Enter untuk buat baru) --"
+                  emptyLabel="Tidak Ada Merk (Generic / Polos)"
+                  onSelect={(item) => {
+                    if (item) {
+                      setBrand(item.name);
+                      setBrandId(Number(item.id));
+                    } else {
+                      setBrand("Tidak Ada Merk");
+                      setBrandId(undefined);
+                    }
+                  }}
+                  onCreate={async (cleanName) => {
+                    const created = await createBrandToApi(cleanName);
+                    if (created) {
+                      setBrandsList((prev) => [...prev, created]);
+                      return { id: created.id, name: created.name };
+                    }
+                    return null;
+                  }}
+                  onDelete={async (item) => {
+                    const ok = await deleteBrandToApi(item.id);
+                    if (ok) {
+                      setBrandsList((prev) => prev.filter((b: any) => b.id !== item.id));
+                    }
+                    return ok;
+                  }}
+                />
               </div>
+
+              {/* List Rak / Lokasi Penempatan */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Lokasi Rak / Penyimpanan
+                  <FieldTooltip content="Posisi penempatan barang. Ketik lalu tekan Enter untuk membuat lokasi baru." />
+                </label>
+                <SearchableSelectWithManage
+                  value={shelfLocation}
+                  options={shelvesList}
+                  placeholder="-- Pilih atau Cari Lokasi Rak (Enter untuk buat baru) --"
+                  emptyLabel="-- Tidak Ditentukan / Tanpa Rak --"
+                  onSelect={(item) => {
+                    setShelfLocation(item ? item.name : "");
+                  }}
+                  onCreate={async (cleanName) => {
+                    const created = await createShelfToApi(cleanName);
+                    if (created) {
+                      setShelvesList((prev) => [...prev, created]);
+                      return created;
+                    }
+                    return null;
+                  }}
+                  onDelete={async (item) => {
+                    const ok = await deleteShelfToApi(item.id);
+                    if (ok) {
+                      setShelvesList((prev) => prev.filter((s) => s.id !== item.id));
+                    }
+                    return ok;
+                  }}
+                />
+              </div>
+      </div>
+
 
               {/* Kategori & Klasifikasi Bertingkat */}
               <div>
@@ -523,41 +634,6 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                     </select>
                     <ChevronDown size={14} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
                   </div>
-                </div>
-              </div>
-
-              {/* Status Publikasi */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Status Publikasi Produk
-                  <FieldTooltip content="Tentukan apakah produk langsung siap dijual di kasir atau diarsipkan sebagai draft." />
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsActive(false)}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      !isActive
-                        ? 'bg-rose-50 border-rose-200 text-rose-700 ring-2 ring-rose-500/20'
-                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-rose-500" />
-                    Tidak Aktif (Draft)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsActive(true)}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      isActive
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-500/20'
-                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    Aktif (Jual)
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -660,10 +736,33 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
+
+              {/* Deskripsi Produk (Menyatu dalam Atribut Lainnya) */}
+              <div className="col-span-1 sm:col-span-3 pt-2 border-t border-slate-100">
+                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                  <span className="text-rose-500 mr-1">*</span>Deskripsi Produk
+                </label>
+                <div className="relative">
+                  <textarea
+                    rows={5}
+                    maxLength={3000}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Tuliskan deskripsi produk atau tambahkan gambar."
+                    className="w-full p-4 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-y min-h-[120px]"
+                  />
+                  <div className="flex justify-end mt-1.5">
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {description.length}/3000
+                    </span>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 
-        {/* 4. Informasi Penjualan & Variasi */}
+          {/* 4. Informasi Penjualan & Variasi */}
         <ProductVariationSection
           hasVariant={hasVariant}
           onToggleVariant={setHasVariant}
@@ -686,6 +785,51 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
 
       {/* Kolom Kanan: Harga & Stok */}
         <div className="space-y-6">
+          {/* Card Status Produk */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900">Status Produk</h3>
+              <span className="text-[11px] text-slate-400">Visibilitas Kasir</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">
+                Status Publikasi
+                <FieldTooltip content="Tentukan apakah produk langsung siap dijual di kasir atau diarsipkan sebagai draft." />
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsActive(false)}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    !isActive
+                      ? "bg-rose-50 border-rose-200 text-rose-700 ring-2 ring-rose-500/20"
+                      : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsActive(true)}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    isActive
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 ring-2 ring-emerald-500/20"
+                      : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Aktif (Jual)
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+                {isActive
+                  ? "Produk aktif dan langsung dapat dicari saat transaksi kasir."
+                  : "Produk dinonaktifkan sementara dan disembunyikan dari kasir."}
+              </p>
+            </div>
+          </div>
           {/* Card Harga & Margin */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
@@ -789,19 +933,19 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
               value={newBrandName}
               onChange={(e) => setNewBrandName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   e.preventDefault();
                   handleAddNewBrand(e);
                 }
               }}
-              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
             />
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setShowAddBrandModal(false);
-                  setNewBrandName('');
+                  setNewBrandName("");
                 }}
                 className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
               >
@@ -813,7 +957,69 @@ export const ProductFormPage: React.FC<ProductFormPageProps> = ({
                 disabled={!newBrandName.trim() || isSavingBrand}
                 className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl shadow-sm transition"
               >
-                {isSavingBrand ? 'Menyimpan...' : 'Simpan Merek'}
+                {isSavingBrand ? "Menyimpan..." : "Simpan Merek"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cepat Tambah Rak Baru */}
+      {showAddShelfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl p-5 shadow-2xl border border-slate-100 w-full max-w-sm">
+            <h3 className="text-sm font-bold text-slate-900 mb-1">Tambah Lokasi Rak Baru</h3>
+            <p className="text-xs text-slate-400 mb-4">Tambahkan nama/kode rak baru ke dalam daftar pilihan.</p>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Contoh: Rak D3 (Aksesoris), Etalase Kaca 2..."
+              value={newShelfName}
+              onChange={(e) => setNewShelfName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const trimmed = newShelfName.trim();
+                  if (trimmed) {
+                    if (!shelvesList.includes(trimmed)) {
+                      setShelvesList((prev) => [...prev, trimmed]);
+                    }
+                    setShelfLocation(trimmed);
+                    setNewShelfName("");
+                    setShowAddShelfModal(false);
+                  }
+                }
+              }}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddShelfModal(false);
+                  setNewShelfName("");
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = newShelfName.trim();
+                  if (trimmed) {
+                    if (!shelvesList.includes(trimmed)) {
+                      setShelvesList((prev) => [...prev, trimmed]);
+                    }
+                    setShelfLocation(trimmed);
+                    setNewShelfName("");
+                    setShowAddShelfModal(false);
+                  }
+                }}
+                disabled={!newShelfName.trim()}
+                className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl shadow-sm transition"
+              >
+                Simpan Rak
               </button>
             </div>
           </div>

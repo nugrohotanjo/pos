@@ -249,6 +249,9 @@ func UpdateProduct(c *gin.Context) {
 	if v, ok := getVal(input, "shelf_location", "shelfLocation", "ShelfLocation"); ok {
 		product.ShelfLocation = fmt.Sprint(v)
 	}
+	if v, ok := getVal(input, "description", "Description"); ok {
+		product.Description = fmt.Sprint(v)
+	}
 	if v, ok := getVal(input, "is_active", "isActive", "IsActive"); ok {
 		if b, okBool := v.(bool); okBool {
 			product.IsActive = b
@@ -279,6 +282,25 @@ func UpdateProduct(c *gin.Context) {
 	if v, ok := getVal(input, "warranty_type", "warrantyType", "WarrantyType"); ok {
 		product.WarrantyType = fmt.Sprint(v)
 	}
+		if v, ok := getVal(input, "brand_id", "brandId", "BrandID"); ok {
+		if n, valid := toInt(v); valid && n > 0 {
+			bid := uint(n)
+			product.BrandID = &bid
+		} else {
+			product.BrandID = nil
+		}
+	}
+	if v, ok := getVal(input, "brand", "Brand"); ok {
+		brandStr := fmt.Sprint(v)
+		product.Brand = brandStr
+		if product.BrandID == nil && brandStr != "" && brandStr != "Tidak Ada Merk" {
+			var b models.Brand
+			if err := tx.Where("LOWER(TRIM(name)) = LOWER(TRIM(?))", brandStr).First(&b).Error; err == nil {
+				product.BrandID = &b.ID
+			}
+		}
+	}
+
 	if v, ok := getVal(input, "cert_number", "certNumber", "CertNumber"); ok {
 		product.CertNumber = fmt.Sprint(v)
 	}
