@@ -6,6 +6,7 @@ import (
 	"pos-backend/utils"
 			"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"pos-backend/config"
@@ -47,7 +48,7 @@ func GetProducts(c *gin.Context) {
 
 	var products []models.Product
 	_ = utils.PaginateAndFilter(c, config.DB, &models.Product{}, &products, utils.DataTablesOptions{
-		Preloads: []string{"CategoryRef", "BrandRef", "VariantTypes", "Variants", "WholesalePrices"},
+		Preloads: []string{"CategoryRef", "BrandRef", "VariantTypes", "Variants", "WholesalePrices", "Images"},
 		SearchFields: []string{"name", "barcode"},
 		FilterFields: map[string]string{
 			"category": "category_id",
@@ -136,6 +137,8 @@ func ToggleArchiveProduct(c *gin.Context) {
 	}
 
 		product.IsActive = !product.IsActive
+
+
 	product.UpdatedAt = time.Now()
 	
 
@@ -162,7 +165,7 @@ func UpdateProduct(c *gin.Context) {
 	}
 	barcode := c.Param("barcode")
 	var product models.Product
-	if err := config.DB.Preload("VariantTypes").Preload("Variants").Preload("WholesalePrices").First(&product, "barcode = ?", barcode).Error; err != nil {
+	if err := config.DB.Preload("VariantTypes").Preload("Variants").Preload("WholesalePrices").Preload("Images").First(&product, "barcode = ?", barcode).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
 		return
 	}
@@ -187,7 +190,14 @@ func UpdateProduct(c *gin.Context) {
 	}()
 
 	// 1. Bersihkan relasi lama secara terurut (anak ke induk)
-	if err := tx.Exec("DELETE FROM product_wholesale_prices WHERE product_id = ?", product.ID).Error; err != nil {
+	
+		if err := tx.Exec("DELETE FROM product_images WHERE product_id = ?", product.ID).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal refresh gambar: " + err.Error()})
+			return
+		}
+
+		if err := tx.Exec("DELETE FROM product_wholesale_prices WHERE product_id = ?", product.ID).Error; err != nil {
 		tx.Rollback()
 		fmt.Printf("[DB ERROR] Delete WholesalePrices: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal hapus harga grosir lama: " + err.Error()})
@@ -282,7 +292,10 @@ func UpdateProduct(c *gin.Context) {
 	if v, ok := getVal(input, "warranty_type", "warrantyType", "WarrantyType"); ok {
 		product.WarrantyType = fmt.Sprint(v)
 	}
-		if v, ok := getVal(input, "brand_id", "brandId", "BrandID"); ok {
+			if v, ok := getVal(input, "condition", "Condition"); ok {
+		product.Condition = fmt.Sprint(v)
+	}
+	if v, ok := getVal(input, "brand_id", "brandId", "BrandID"); ok {
 		if n, valid := toInt(v); valid && n > 0 {
 			bid := uint(n)
 			product.BrandID = &bid
@@ -389,7 +402,32 @@ func UpdateProduct(c *gin.Context) {
 		}
 	}
 
-	product.UpdatedAt = time.Now()
+	
+		// Simpan Galeri Gambar (Maksimal 9 Gambar)
+		if imgRaw, ok := input["images"]; ok && imgRaw != nil {
+			if imgBytes, err := json.Marshal(imgRaw); err == nil {
+				var imgList []string
+				_ = json.Unmarshal(imgBytes, &imgList)
+				for idx, imgURL := range imgList {
+					if idx >= 9 {
+						break
+					}
+					if strings.TrimSpace(imgURL) == "" {
+						continue
+					}
+					imgRecord := models.ProductImage{
+						ProductID: product.ID,
+						ImageURL:  imgURL,
+						SortOrder: idx,
+						IsPrimary: idx == 0,
+						CreatedAt: time.Now(),
+					}
+					_ = tx.Create(&imgRecord).Error
+				}
+			}
+		}
+
+		product.UpdatedAt = time.Now()
 
 	// Putus asosiasi GORM agar tidak menimpa record baru
 	product.Variants = nil
@@ -397,6 +435,12 @@ func UpdateProduct(c *gin.Context) {
 	product.WholesalePrices = nil
 
 	// Update eksplisit kolom boolean has_variant agar zero-value (false) tidak diabaikan GORM
+		if err := tx.Exec("UPDATE products SET condition = ? WHERE id = ?", product.Condition, product.ID).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update status condition: " + err.Error()})
+			return
+		}
+
 		if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).Update("has_variant", product.HasVariant).Error; err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update status varian: " + err.Error()})
@@ -407,6 +451,32 @@ func UpdateProduct(c *gin.Context) {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Gagal update master produk: " + err.Error()})
 		return
+	}
+
+	// Simpan Galeri Gambar (Maksimal 9 Gambar)
+	if imgRaw, ok := input["images"]; ok && imgRaw != nil {
+		var imgList []string
+		if imgBytes, err := json.Marshal(imgRaw); err == nil {
+			_ = json.Unmarshal(imgBytes, &imgList)
+			_ = tx.Exec("DELETE FROM product_images WHERE product_id = ?", product.ID).Error
+			for idx, imgURL := range imgList {
+				if idx >= 9 {
+					break
+				}
+				cleanURL := strings.TrimSpace(imgURL)
+				if cleanURL == "" {
+					continue
+				}
+				imgRecord := models.ProductImage{
+					ProductID: product.ID,
+					ImageURL:  cleanURL,
+					SortOrder: idx,
+					IsPrimary: idx == 0,
+					CreatedAt: time.Now(),
+				}
+				_ = tx.Create(&imgRecord).Error
+			}
+		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -512,6 +582,7 @@ func GetProductByBarcode(c *gin.Context) {
 		Preload("VariantTypes").
 		Preload("Variants").
 		Preload("WholesalePrices").
+		Preload("Images").
 		First(&product, "barcode = ?", barcode).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Produk tidak ditemukan"})
 		return

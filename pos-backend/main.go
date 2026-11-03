@@ -35,6 +35,7 @@ func main() {
 	config.ConnectDatabase()
 
 	r := gin.Default()
+	r.Static("/uploads", "./uploads")
 	r.Use(corsMiddleware())
 	r.Use(func(c *gin.Context) {
 		actor := c.GetHeader("X-User-Name")
@@ -54,6 +55,7 @@ func main() {
 	{
 		// 1. PUBLIC AUTH ROUTE (Tanpa Proteksi)
 		v1.POST("/auth/login", handlers.AuthLogin)
+		v1.POST("/products/upload-image", handlers.UploadProductImage)
 
 		// 2. PROTECTED ROUTES (Wajib JWT Cookie/Bearer Valid + Device Binding + Token Version)
 		protected := v1.Group("")

@@ -48,6 +48,7 @@ type Product struct {
 	Brand           string                  `gorm:"type:varchar(100);default:'Tidak Ada Merk'" json:"brand"`
 	BrandID         *uint                   `gorm:"index" json:"brand_id,omitempty"`
 	BrandRef        *Brand                  `gorm:"foreignKey:BrandID" json:"brand_ref,omitempty"`
+	Condition       string                  `gorm:"type:varchar(50);default:'Baru'" json:"condition"`
 	Price           float64                     `json:"price" gorm:"not null"`
 	CostPrice       float64                     `json:"cost_price" gorm:"not null;default:0"`
 	Stock           int                     `json:"stock" gorm:"default:0"`
@@ -67,6 +68,7 @@ type Product struct {
 	VariantTypes    []ProductVariantType    `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE" json:"variant_types,omitempty"`
 	Variants        []ProductVariant        `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE" json:"variants,omitempty"`
 	WholesalePrices []ProductWholesalePrice `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE" json:"wholesale_prices,omitempty"`
+	Images          []ProductImage          `gorm:"foreignKey:ProductID;constraint:OnDelete:CASCADE" json:"images,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
 	UpdatedAt       time.Time               `json:"updated_at"`
 }
@@ -110,6 +112,7 @@ type ProductRequest struct {
 	StockNote       string                `json:"stock_note"`
 	Brand           string                `json:"brand"`
 	BrandID         *uint                 `json:"brand_id"`
+	Condition       string                `json:"condition"`
 	Dimension       string                `json:"dimension"`
 	Origin          string                `json:"origin"`
 	WarrantyPeriod  string                `json:"warranty_period"`
@@ -119,4 +122,13 @@ type ProductRequest struct {
 	VariantTypes    []VariantTypeInput    `json:"variant_types"`
 	Variants        []VariantItemInput    `json:"variants"`
 	WholesalePrices []WholesalePriceInput `json:"wholesale_prices"`
+}
+
+type ProductImage struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ProductID uint      `json:"product_id" gorm:"index;not null"`
+	ImageURL  string    `json:"image_url" gorm:"type:varchar(255);not null"`
+	SortOrder int       `json:"sort_order" gorm:"default:0"`
+	IsPrimary bool      `json:"is_primary" gorm:"default:false"`
+	CreatedAt time.Time `json:"created_at"`
 }
